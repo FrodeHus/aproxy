@@ -11,13 +11,9 @@
             "module": "aproxy",
             "args": [
                 "proxy",
-                "single",
-                "--local-port",
-                "9000",
-                "--remote-host",
-                "127.0.0.1",
-                "--remote-port",
-                "80"
+                "start",
+                "--configFile",
+                "sampleconfig.json",
             ]
         }
     ]

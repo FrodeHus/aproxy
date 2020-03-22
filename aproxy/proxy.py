@@ -3,14 +3,12 @@ from enum import Enum
 import hexdump
 from colorama import Fore
 import select
+from .util import Direction, print_info, get_direction_label
+from .proxy_config import load_config, ProxyConfig, ProxyItem
 
 running_proxies = {}
 stop_proxies = False
-
-
-class Direction(Enum):
-    LOCAL = 0
-    REMOTE = 1
+config: ProxyConfig = None
 
 
 def signal_handler(sig, frame):
@@ -26,43 +24,24 @@ def signal_handler(sig, frame):
 
 
 def start_from_config(configFile: str):
-    with open(configFile, "r") as cfg:
-        config = json.load(cfg)
-    print("Loaded config for {} proxies".format(len(config["proxies"])))
-    for proxy in config["proxies"]:
-        dump_data = True if "dumpData" in proxy and proxy["dumpData"] else False
+    config = load_config(configFile)
 
-        thread = threading.Thread(
-            target=start_proxy,
-            args=(
-                proxy["localPort"],
-                proxy["remoteAddress"],
-                proxy["remotePort"],
-                proxy["localAddress"],
-                False,
-                dump_data,
-            ),
-        )
+    print("Loaded config for {} proxies".format(len(config.proxies)))
+    for proxy in config.proxies:
+        thread = threading.Thread(target=start_proxy, args=(proxy,))
         thread.start()
 
 
-def start_proxy(
-    local_port: int,
-    remote_host: str,
-    remote_port: int,
-    local_host: str = "0.0.0.0",
-    receive_first: bool = False,
-    dump_data: bool = False,
-):
+def start_proxy(config: ProxyItem):
     global running_proxies
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     try:
-        server.bind((local_host, local_port))
-        print("[*] Listening on %s:%d" % (local_host, local_port))
+        server.bind((config.local_host, config.local_port))
+        print("[*] Listening on %s:%d" % (config.local_host, config.local_port))
     except Exception as e:
-        print("[!!] Failed to listen on %s:%d" % (local_host, local_port))
+        print("[!!] Failed to listen on %s:%d" % (config.local_host, config.local_port))
         print(e)
         sys.exit(0)
 
@@ -71,34 +50,22 @@ def start_proxy(
     while not stop_proxies:
         client_socket, addr = server.accept()
         print("[==>] Received incoming connection from %s:%d" % (addr[0], addr[1]))
-        proxy = Proxy(client_socket, remote_host, remote_port, receive_first, dump_data)
+        proxy = Proxy(client_socket, config)
         proxy.start()
         running_proxies[proxy.name] = proxy
 
 
 class Proxy:
-    def __init__(
-        self,
-        client_socket: socket.socket,
-        remote_host: str,
-        remote_port: int,
-        receive_first: bool,
-        dump_data: bool = True,
-    ):
+    def __init__(self, client_socket: socket.socket, config: ProxyItem):
         super().__init__()
 
         self.name = "{}->{}:{}".format(
-            client_socket.getsockname(), remote_host, remote_port
+            client_socket.getsockname(), config.remote_host, config.remote_port
         )
         self.__local = client_socket
-        remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        remote_socket.connect((remote_host, remote_port))
-        self.__remote_host = remote_host
-        self.__remote_port = remote_port
-        self.__remote = remote_socket
-        self.__dump_data = dump_data
-        self.__rec_first = receive_first
+        self.__config = config
         self.__stop = False
+        self.__remote_connect()
 
     def start(self):
         self.__thread = threading.Thread(target=self.__proxy_loop)
@@ -119,6 +86,11 @@ class Proxy:
 
         print(Fore.MAGENTA + "Disconnected " + self.name + Fore.RESET)
 
+    def __remote_connect(self):
+        remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        remote_socket.connect((self.__config.remote_host, self.__config.remote_port))
+        self.__remote = remote_socket
+
     def __receive_first(self, receive_first):
         if receive_first:
             remote_buffer = self.__receive_from(self.__remote)
@@ -134,7 +106,7 @@ class Proxy:
                 self.__local.send(remote_buffer)
 
     def __proxy_loop(self):
-        self.__receive_first(self.__rec_first)
+        self.__receive_first(self.__config.receive_first)
         try:
             while True:
                 if self.__stop:
@@ -154,7 +126,7 @@ class Proxy:
 
         buffer = self.__receive_from(receiver)
 
-        self.__print_info(buffer, direction)
+        print_info(buffer, direction, self.__config.dump_data)
         handler = (
             self.__request_handler
             if direction == Direction.LOCAL
@@ -162,78 +134,36 @@ class Proxy:
         )
 
         buffer = handler(buffer)
-        try:
-            sender.send(buffer)
-            if len(buffer):
-                outgoing = (
-                    Direction.LOCAL
-                    if direction is Direction.REMOTE
-                    else Direction.REMOTE
-                )
-                print(
-                    "{} Sent to {}".format(
-                        self.__get_direction_label(direction), outgoing.name
-                    )
-                )
-        except socket.error:
-            self.__reconnect()
-            self.__remote.send(buffer)
-
-    def __get_direction_label(self, direction: Direction):
-        if direction == Direction.LOCAL:
-            label = "==>"
-        else:
-            label = "<=="
-        label = "[{}{}{}]".format(Fore.GREEN, label, Fore.RESET)
-        return label
-
-    def __print_info(self, buffer: str, direction: Direction):
-        if not len(buffer):
-            return
-        label = self.__get_direction_label(direction)
-        color = Fore.CYAN if direction is Direction.LOCAL else Fore.YELLOW
-        print(
-            self.__get_direction_label(direction)
-            + color
-            + " Received {} bytes of data from {}".format(
-                str(len(buffer)), direction.name
+        sender.send(buffer)
+        if len(buffer):
+            outgoing = (
+                Direction.LOCAL if direction is Direction.REMOTE else Direction.REMOTE
             )
-        )
-        if self.__dump_data:
-            hexdump.hexdump(buffer)
-
-        print(Fore.RESET)
+            print("{} Sent to {}".format(get_direction_label(direction), outgoing.name))
 
     def __receive_from(self, connection: socket):
         buffer = b""
         if not connection:
             return buffer
 
-        MSG_LEN = 4096
         connection.settimeout(0.1)
         try:
 
-            bytes_recvd = 0
-            while bytes_recvd < MSG_LEN:
-                chunk = connection.recv(min(MSG_LEN - bytes_recvd, 1024))
+            while True:
+                chunk = connection.recv(4096)
                 if not chunk:
                     break
 
-                bytes_recvd = bytes_recvd + len(chunk)
                 buffer += chunk
+            if not len(buffer):
+                self.stop()
 
         except socket.timeout:
             pass
         except socket.error as e:
             print(Fore.RED + e + Fore.RESET)
             pass
-        # if not len(buffer):
-        #     self.stop()
         return buffer
-
-    def __reconnect(self, connection: socket):
-        self.__remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__remote.connect((self.__remote_host, self.__remote_port))
 
     def __request_handler(self, buffer: str):
         # perform any modifications bound for the remote host here
