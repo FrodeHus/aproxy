@@ -2,8 +2,7 @@ import json
 
 
 class ProxyConfig:
-    def __init__(self, verbosity: int, proxies: []):
-        self.verbosity: int = verbosity
+    def __init__(self, proxies: []):
         self.proxies = proxies
 
 
@@ -14,14 +13,16 @@ class ProxyItem:
         local_port: int,
         remote_host: str,
         remote_port: int,
-        dump_data: bool,
+        name: str,
+        verbosity: int,
     ):
         self.local_host = local_host
         self.local_port = local_port
         self.remote_host = remote_host
         self.remote_port = remote_port
         self.receive_first = False
-        self.dump_data = dump_data
+        self.name = name
+        self.verbosity = verbosity
 
 
 def dict_to_config(json_config: dict):
@@ -32,10 +33,13 @@ def dict_to_config(json_config: dict):
         local_port = int(item["localPort"]) if "localPort" in item else 0
         remote_host = item["remoteHost"] if "remoteHost" in item else None
         remote_port = int(item["remotePort"]) if "remotePort" in item else 0
-        dump_data = item["dumpData"] if "dumpData" in item else False
-        proxy = ProxyItem(local_host, local_port, remote_host, remote_port, dump_data)
+        verbosity = int(item["verbosity"]) if "verbosity" in item else 0
+        name = item["name"] if "name" in item else "<noname>"
+        proxy = ProxyItem(
+            local_host, local_port, remote_host, remote_port, name, verbosity
+        )
         proxies.append(proxy)
-    config = ProxyConfig(verbosity, proxies)
+    config = ProxyConfig(proxies)
     return config
 
 

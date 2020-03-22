@@ -1,18 +1,18 @@
 {
-    "verbosity": 0,
     "proxies": [
         {
             "localPort": 4444,
             "localHost": "0.0.0.0",
             "remotePort": 443,
             "remoteHost": "13.94.172.96",
-            "dumpData": true
+            "verbosity": 0
         },
         {
             "localPort": 5555,
             "localHost": "0.0.0.0",
             "remotePort": 443,
-            "remoteHost": "13.94.172.96"
+            "remoteHost": "13.94.172.96",
+            "verbosity": 3
         }
     ]
 }

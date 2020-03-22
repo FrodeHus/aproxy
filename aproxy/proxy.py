@@ -126,7 +126,7 @@ class Proxy:
 
         buffer = self.__receive_from(receiver)
 
-        print_info(buffer, direction, self.__config.dump_data)
+        print_info(buffer, direction, self.__config)
         handler = (
             self.__request_handler
             if direction == Direction.LOCAL
@@ -135,11 +135,15 @@ class Proxy:
 
         buffer = handler(buffer)
         sender.send(buffer)
-        if len(buffer):
+        if len(buffer) and self.__config.verbosity > 1:
             outgoing = (
                 Direction.LOCAL if direction is Direction.REMOTE else Direction.REMOTE
             )
-            print("{} Sent to {}".format(get_direction_label(direction), outgoing.name))
+            print(
+                "{} Sent to {}".format(
+                    get_direction_label(direction, self.__config.name), outgoing.name
+                )
+            )
 
     def __receive_from(self, connection: socket):
         buffer = b""
