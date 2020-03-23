@@ -146,19 +146,12 @@ class Proxy:
             print(traceback.format_exc())
 
     def __handle_traffic(self, direction: Direction):
-        rdy_read = []
         if direction == Direction.LOCAL:
             receiver, sender = self.__local, self.__remote
-            try:
-                rdy_read, _, _ = select.select([receiver,], [], [])
-            except select.error:
-                self.stop()
-                return
         else:
             receiver, sender = self.__remote, self.__local
 
-        if not rdy_read or len(rdy_read) > 0:
-            buffer = self.__receive_from(receiver)
+        buffer = self.__receive_from(receiver)
 
         self.__print_info(buffer, direction)
         handler = (
@@ -182,6 +175,9 @@ class Proxy:
                     )
                 )
         except:
+            import traceback
+
+            print(traceback.format_exc())
             pass
 
     def __get_direction_label(self, direction: Direction):
@@ -232,8 +228,8 @@ class Proxy:
         except socket.error as e:
             print(Fore.RED + e + Fore.RESET)
             pass
-        if not len(buffer):
-            self.stop()
+        # if not len(buffer):
+        #     self.stop()
         return buffer
 
     def __disconnected(self, connection: socket):
