@@ -93,7 +93,8 @@ class Proxy:
         self.__local = client_socket
         remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         remote_socket.connect((remote_host, remote_port))
-
+        self.__remote_host = remote_host
+        self.__remote_port = remote_port
         self.__remote = remote_socket
         self.__dump_data = dump_data
         self.__rec_first = receive_first
@@ -174,11 +175,9 @@ class Proxy:
                         self.__get_direction_label(direction), outgoing.name
                     )
                 )
-        except:
-            import traceback
-
-            print(traceback.format_exc())
-            pass
+        except socket.error:
+            self.__reconnect()
+            self.__remote.send(buffer)
 
     def __get_direction_label(self, direction: Direction):
         if direction == Direction.LOCAL:
@@ -232,14 +231,9 @@ class Proxy:
         #     self.stop()
         return buffer
 
-    def __disconnected(self, connection: socket):
-        try:
-            rdy_read, rdy_write, sock_err = select.select([connection,], [], [])
-            return len(rdy_read) == 0
-        except select.error:
-            return True
-        except:
-            return True
+    def __reconnect(self, connection: socket):
+        self.__remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__remote.connect((self.__remote_host, self.__remote_port))
 
     def __request_handler(self, buffer: str):
         # perform any modifications bound for the remote host here
