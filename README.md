@@ -37,6 +37,12 @@ Example config `proxy.json`:
 
 Start all the proxies with `aproxy proxy start --configFile proxy.json`
 
+```
+Loaded config for 2 proxies
+[*] Listening on 0.0.0.0:4444
+[*] Listening on 0.0.0.0:5555
+```
+
 ## Future notes
 
 - Plugin support for manipulating data going in/out.
