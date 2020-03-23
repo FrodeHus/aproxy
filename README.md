@@ -40,7 +40,7 @@ Start all the proxies with `aproxy proxy start --configFile proxy.json`
 ```
 Loaded config for 2 proxies
 [*] Listening on 0.0.0.0:4444
-[*] Listening on 0.0.0.0:5555
+[*] Listening on 127.0.0.1:3306
 ```
 
 ## Future notes
