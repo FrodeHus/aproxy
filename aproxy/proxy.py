@@ -66,7 +66,7 @@ def start_proxy(
         print(e)
         sys.exit(0)
 
-    server.listen(5)
+    server.listen()
     global stop_proxies
     while not stop_proxies:
         client_socket, addr = server.accept()
