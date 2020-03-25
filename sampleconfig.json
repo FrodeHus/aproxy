@@ -1,18 +1,40 @@
 {
+    "providerConfig": [
+        {
+            "name": "k8s",
+            "provider": {
+                "name": "kubernetes",
+                "service": "abcdef",
+                "context": "dummy"
+            }
+        },
+        {
+            "name": "ssh",
+            "provider": {
+                "name": "ssh",
+                "host": "127.0.0.1",
+                "user": "abcdef",
+                "password": "dummy",
+                "sshKeys": "./dummykeys"
+            }
+        }
+    ],
     "proxies": [
         {
             "localPort": 4444,
             "localHost": "0.0.0.0",
             "remotePort": 443,
-            "remoteHost": "13.94.172.96",
-            "verbosity": 0
+            "remoteHost": "172.16.0.1",
+            "verbosity": 0,
+            "provider": "ssh"
         },
         {
             "localPort": 5555,
             "localHost": "0.0.0.0",
-            "remotePort": 443,
-            "remoteHost": "13.94.172.96",
-            "verbosity": 3
+            "remotePort": 80,
+            "remoteHost": "10.0.1.1",
+            "verbosity": 3,
+            "provider": "k8s"
         }
     ]
 }

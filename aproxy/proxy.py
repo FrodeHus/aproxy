@@ -24,6 +24,7 @@ def signal_handler(sig, frame):
 
 
 def start_from_config(configFile: str):
+    global config
     config = load_config(configFile)
 
     print("Loaded config for {} proxies".format(len(config.proxies)))
@@ -32,16 +33,40 @@ def start_from_config(configFile: str):
         thread.start()
 
 
-def start_proxy(config: ProxyItem):
+def start_single_proxy(
+    local_port: int,
+    remote_port: int,
+    remote_host: str,
+    local_host: str = None,
+    verbosity: int = 0,
+):
+    cfg = ProxyItem(
+        local_host, local_port, remote_host, remote_port, "SingleHost", verbosity
+    )
+    start_proxy(cfg)
+
+
+def start_proxy(proxy_config: ProxyItem):
     global running_proxies
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
+    global config
+    if proxy_config.provider:
+        provider = config.providers[proxy_config.provider]
+        provider.connect()
+
     try:
-        server.bind((config.local_host, config.local_port))
-        print("[*] Listening on %s:%d" % (config.local_host, config.local_port))
+        server.bind((proxy_config.local_host, proxy_config.local_port))
+        print(
+            "[*] Listening on %s:%d"
+            % (proxy_config.local_host, proxy_config.local_port)
+        )
     except Exception as e:
-        print("[!!] Failed to listen on %s:%d" % (config.local_host, config.local_port))
+        print(
+            "[!!] Failed to listen on %s:%d"
+            % (proxy_config.local_host, proxy_config.local_port)
+        )
         print(e)
         sys.exit(0)
 
@@ -50,7 +75,7 @@ def start_proxy(config: ProxyItem):
     while not stop_proxies:
         client_socket, addr = server.accept()
         print("[==>] Received incoming connection from %s:%d" % (addr[0], addr[1]))
-        proxy = Proxy(client_socket, config)
+        proxy = Proxy(client_socket, proxy_config)
         proxy.start()
         running_proxies[proxy.name] = proxy
 
