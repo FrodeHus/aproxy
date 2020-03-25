@@ -2,6 +2,14 @@ from aproxy.providers.provider_config import ProviderConfigItem
 import socket
 
 
+class K8sPossiblities:
+    def __init__(self):
+        super().__init__()
+
+    def passthrough_ok(self):
+        return False
+
+
 class KubernetesProvider(ProviderConfigItem):
     def __init__(self, name, service: str = None, pod: str = None, context: str = None):
         super().__init__(name)
@@ -10,13 +18,16 @@ class KubernetesProvider(ProviderConfigItem):
         self.__context = context
 
     def connect(self) -> socket.socket:
-        print("connecting to kubernetes....")
+        print("connecting to kubernetes [context: {}] ....".format(self.__context))
         possibilies = self.__run_checks()
-        self.__upload_client()
+        if not possibilies.passthrough_ok:
+            self.__upload_client()
+        else:
+            pass
         return self.__create_connection(None, None)
 
-    def __run_checks(self):
-        pass
+    def __run_checks(self) -> K8sPossiblities:
+        return K8sPossiblities()
 
     def __upload_client(self):
         print("uploading payload....")
