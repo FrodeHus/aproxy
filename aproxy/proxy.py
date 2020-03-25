@@ -50,18 +50,17 @@ def start_proxy(proxy_config: ProxyItem):
     global running_proxies
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    global config
-    if proxy_config.provider:
-        provider = config.providers[proxy_config.provider]
-        provider.connect()
-
+    remote_socket: socket.socket = None
     try:
         server.bind((proxy_config.local_host, proxy_config.local_port))
         print(
             "[*] Listening on %s:%d"
             % (proxy_config.local_host, proxy_config.local_port)
         )
+        if proxy_config.provider:
+            provider = config.providers[proxy_config.provider]
+            remote_socket = provider.connect()
+
     except Exception as e:
         print(
             "[!!] Failed to listen on %s:%d"
@@ -75,13 +74,18 @@ def start_proxy(proxy_config: ProxyItem):
     while not stop_proxies:
         client_socket, addr = server.accept()
         print("[==>] Received incoming connection from %s:%d" % (addr[0], addr[1]))
-        proxy = Proxy(client_socket, proxy_config)
+        proxy = Proxy(client_socket, proxy_config, remote_socket)
         proxy.start()
         running_proxies[proxy.name] = proxy
 
 
 class Proxy:
-    def __init__(self, client_socket: socket.socket, config: ProxyItem):
+    def __init__(
+        self,
+        client_socket: socket.socket,
+        config: ProxyItem,
+        remote_host: socket.socket = None,
+    ):
         super().__init__()
 
         self.name = "{}->{}:{}".format(
@@ -90,7 +94,10 @@ class Proxy:
         self.__local = client_socket
         self.__config = config
         self.__stop = False
-        self.__remote_connect()
+        if remote_host:
+            self.__remote = remote_host
+        else:
+            self.__remote_connect()
 
     def start(self):
         self.__thread = threading.Thread(target=self.__proxy_loop)
@@ -112,9 +119,16 @@ class Proxy:
         print(Fore.MAGENTA + "Disconnected " + self.name + Fore.RESET)
 
     def __remote_connect(self):
-        remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        remote_socket.connect((self.__config.remote_host, self.__config.remote_port))
-        self.__remote = remote_socket
+        global config
+        if self.__config.provider:
+            provider = config.providers[self.__config.provider]
+            self._remote = provider.connect()
+        else:
+            remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            remote_socket.connect(
+                (self.__config.remote_host, self.__config.remote_port)
+            )
+            self.__remote = remote_socket
 
     def __receive_first(self, receive_first):
         if receive_first:

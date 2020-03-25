@@ -1,11 +1,11 @@
-import json
+import json, socket
 
 
 class ProviderConfigItem:
     def __init__(self, name: str):
         self.name = name
 
-    def connect(self):
+    def connect(self) -> socket.socket:
         pass
 
 

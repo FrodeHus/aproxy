@@ -1,4 +1,5 @@
 from aproxy.providers.provider_config import ProviderConfigItem
+import socket
 
 
 class SshProvider(ProviderConfigItem):
@@ -18,7 +19,7 @@ class SshProvider(ProviderConfigItem):
         self.__password = password
         self.__ssh_keys = ssh_keys
 
-    def connect(self):
+    def connect(self) -> socket.socket:
         print("connecting to ssh...")
         return super().connect()
 
