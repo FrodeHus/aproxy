@@ -28,26 +28,26 @@ class SshProvider(ProviderConfigItem):
         self.__password = password
         self.__ssh_keys = ssh_keys
 
-    def connect(self, remote_address: str, remote_port: int) -> socket.socket:
-        super().connect(remote_address, remote_port)
-        print(f"connecting to ssh {remote_address}:{remote_port}...")
-        self.__remote_address = remote_address
-        self.__remote_port = remote_port
+    def connect(self) -> socket.socket:
+        print(f"connecting to ssh {self.__user}:{self.__host}...")
         client = paramiko.SSHClient()
         client.load_system_host_keys()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             client.connect(self.__host, username=self.__user, look_for_keys=True)
-            self.__transport = client.get_transport()
+            self.__ssh_client = client
         except Exception as e:
             print(f"Failed to connect to remote SSH server: {str(e)}")
             sys.exit(1)
 
-    def client_connect(self, client_socket: socket.socket = None):
+    def client_connect(
+        self, remote_address: str, remote_port: int, client_socket: socket.socket
+    ):
         try:
-            return self.__transport.open_channel(
+            transport = self.__ssh_client.get_transport()
+            return transport.open_channel(
                 "direct-tcpip",
-                (self.__remote_address, self.__remote_port),
+                (remote_address, remote_port),
                 client_socket.getpeername(),
             )
         except Exception as e:

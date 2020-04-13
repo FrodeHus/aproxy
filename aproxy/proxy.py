@@ -59,7 +59,7 @@ def start_proxy(proxy_config: ProxyItem):
         )
         if proxy_config.provider:
             provider = config.providers[proxy_config.provider]
-            provider.connect(proxy_config.remote_host, proxy_config.remote_port)
+            provider.connect()
 
     except Exception as e:
         print(
@@ -72,7 +72,7 @@ def start_proxy(proxy_config: ProxyItem):
     global stop_proxies
     while not stop_proxies:
         client_socket, addr = server.accept()
-        print("[==>] Received incoming connection from %s:%d" % (addr[0], addr[1]))
+        print(f"[==>] Received incoming connection from {addr[0]}:{str(addr[1])}")
         proxy = Proxy(client_socket, proxy_config, remote_socket)
         proxy.start()
         running_proxies[proxy.name] = proxy
@@ -121,7 +121,9 @@ class Proxy:
         global config
         if self.__config.provider:
             provider = config.providers[self.__config.provider]
-            self.__remote = provider.client_connect(self.__local)
+            self.__remote = provider.client_connect(
+                self.__config.remote_host, self.__config.remote_port, self.__local
+            )
         else:
             remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             remote_socket.connect(
@@ -172,7 +174,17 @@ class Proxy:
         )
 
         buffer = handler(buffer)
-        sender.send(buffer)
+        if not sender:
+            self.__stop = True
+            return
+
+        try:
+            sender.send(buffer)
+        except OSError as e:
+            # socket is dead
+            self.__stop = True
+            return
+
         if len(buffer) and self.__config.verbosity > 1:
             outgoing = (
                 Direction.LOCAL if direction is Direction.REMOTE else Direction.REMOTE

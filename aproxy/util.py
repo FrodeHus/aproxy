@@ -9,12 +9,19 @@ class Direction(Enum):
     REMOTE = 1
 
 
-def get_direction_label(direction: Direction, textLabel: str = None):
+def get_direction_label(
+    direction: Direction, textLabel: str = None, config: ProxyItem = None
+):
     if direction == Direction.LOCAL:
         label = "==>"
     else:
         label = "<=="
-    label = "[{} {}{}{}]".format(textLabel, Fore.GREEN, label, Fore.RESET)
+    label = f"[{textLabel} {Fore.GREEN}{label}{Fore.RESET}]"
+    if config and config.provider:
+        label = (
+            label
+            + f" {Fore.YELLOW}({Fore.RESET}{config.provider}{Fore.YELLOW}){Fore.RESET}"
+        )
     return label
 
 
@@ -23,13 +30,14 @@ def print_info(buffer: str, direction: Direction, config: ProxyItem):
         return
     if not len(buffer):
         return
-    label = get_direction_label(direction)
+    label = get_direction_label(direction, config)
     color = Fore.CYAN if direction is Direction.LOCAL else Fore.YELLOW
     print(
-        get_direction_label(direction, config.name)
+        get_direction_label(direction, config.name, config)
         + color
-        + " Received {} bytes of data from {}".format(str(len(buffer)), direction.name)
+        + f" Received {str(len(buffer))} bytes of data from {direction.name}"
     )
+
     if config.verbosity > 2:
         hexdump.hexdump(buffer)
 

@@ -5,11 +5,12 @@ class ProviderConfigItem:
     def __init__(self, name: str):
         self.name = name
 
-    def connect(self, remote_address: str, remote_port: int):
-        self.__remote_address = remote_address
-        self.__remote_port = remote_port
+    def connect(self):
+        pass
 
-    def client_connect(self, client_socket: socket.socket = None) -> socket.socket:
+    def client_connect(
+        self, remote_address: str, remote_port: int, client_socket: socket.socket
+    ) -> socket.socket:
         pass
 
 
