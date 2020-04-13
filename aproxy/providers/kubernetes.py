@@ -1,36 +1,11 @@
 from aproxy.providers.provider_config import ProviderConfigItem
+from aproxy.providers.kubernetes_capabilites import KubeCapabilities
 import socket
 from kubernetes import client, config
 from kubernetes.client import configuration, V1Pod
 from kubernetes.client.api import core_v1_api
 from kubernetes.stream import stream
 from colorama import Fore
-
-
-class K8sPossiblities:
-    def __init__(self, user: str):
-        super().__init__()
-        self.__user = user
-        if user and user.find("exec failed") != -1:
-            self.__can_exec = True
-            self.__user = None
-        elif not user:
-            self.__can_exec = False
-            self.__user = None
-        else:
-            self.__can_exec = True
-
-    def passthrough_ok(self):
-        return False
-
-    def __str__(self):
-        color = Fore.GREEN
-        if self.__can_exec and not self.__user:
-            color = Fore.YELLOW
-        elif not self.__can_exec:
-            color = Fore.RED
-
-        return f"capabilities: [exec: {color}{self.__can_exec}{Fore.RESET}]\t[user: {self.__user}]"
 
 
 class KubernetesProvider(ProviderConfigItem):
@@ -61,12 +36,12 @@ class KubernetesProvider(ProviderConfigItem):
             pass
         return self.__create_connection(None, None)
 
-    def __run_checks(self, client: core_v1_api, pod_info: V1Pod) -> K8sPossiblities:
+    def __run_checks(self, client: core_v1_api, pod_info: V1Pod) -> KubeCapabilities:
         exec_command = ["/bin/sh", "-c", "whoami"]
         user = self.__exec(
             exec_command, client, pod_info.metadata.name, pod_info.metadata.namespace
         )
-        return K8sPossiblities(user)
+        return KubeCapabilities(user)
 
     def __exec(
         self, cmd: [], client: core_v1_api, name: str, namespace: str = "default"
