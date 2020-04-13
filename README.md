@@ -17,14 +17,14 @@ Example config `proxy.json`:
 {
     "proxies": [
         {
-            "name": "victim web server",
+            "name": "target web server",
             "localPort": 4444,
             "remotePort": 80,
             "remoteHost": "254.312.1.0",
             "verbosity": 0
         },
         {
-            "name": "victim database",
+            "name": "target database",
             "localPort": 3306,
             "localHost": "127.0.0.1",
             "remotePort": 3306,
