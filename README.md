@@ -106,7 +106,7 @@ This can now be used by different proxies reaching different remote hosts:
 ```json
 "proxies": [
         {
-            "name": "securwebserver",
+            "name": "securewebserver",
             "localPort": 4444,
             "localHost": "0.0.0.0",
             "remotePort": 443,
@@ -129,3 +129,4 @@ This can now be used by different proxies reaching different remote hosts:
 ## Future notes
 
 - Plugin support for manipulating data going in/out.
+- kubernetes provider
