@@ -9,7 +9,7 @@ class ProviderConfigItem:
         self.__remote_address = remote_address
         self.__remote_port = remote_port
 
-    def client_connect(self) -> socket.socket:
+    def client_connect(self, client_socket: socket.socket = None) -> socket.socket:
         pass
 
 

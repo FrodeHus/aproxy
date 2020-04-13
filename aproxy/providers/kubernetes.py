@@ -11,7 +11,16 @@ class K8sPossiblities:
 
 
 class KubernetesProvider(ProviderConfigItem):
-    def __init__(self, name, service: str = None, pod: str = None, context: str = None):
+    EXEC_URL = "wss://{}:8443/api/v1/namespaces/default/pods/{}/exec?command={}&stderr=true&stdin=true&stdout=true&tty=false"
+
+    def __init__(
+        self,
+        name,
+        api_url: str,
+        service: str = None,
+        pod: str = None,
+        context: str = None,
+    ):
         super().__init__(name)
         self.__service = service
         self.__pod = pod
@@ -40,6 +49,9 @@ class KubernetesProvider(ProviderConfigItem):
 
     def __can_I_do_this_without_uploads(self) -> bool:
         pass
+
+    def __exec(self, cmd: str):
+        url = self.EXEC_URL.format(self.__url, self.__pod, cmd)
 
 
 def load_config(config: dict) -> KubernetesProvider:

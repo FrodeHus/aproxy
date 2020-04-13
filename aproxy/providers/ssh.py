@@ -3,6 +3,12 @@ import sys
 import socket
 import paramiko
 import threading
+import socketserver
+
+
+class ForwardServer(socketserver.ThreadingTCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
 
 
 class SshProvider(ProviderConfigItem):
@@ -24,55 +30,28 @@ class SshProvider(ProviderConfigItem):
 
     def connect(self, remote_address: str, remote_port: int) -> socket.socket:
         super().connect(remote_address, remote_port)
-        print("connecting to ssh...")
+        print(f"connecting to ssh {remote_address}:{remote_port}...")
         self.__remote_address = remote_address
         self.__remote_port = remote_port
         client = paramiko.SSHClient()
+        client.load_system_host_keys()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            client.connect(self.__host, username=self.__user)
-            trans: paramiko.Transport = client.get_transport()
-            trans.request_port_forward("", 4444)
-            trans.open_session()
-            provider_server = threading.Thread(
-                target=self.__serve_connections, args=(trans,)
-            )
-            provider_server.start()
-        except paramiko.SSHException as err:
-            print("Unable to enable reverse port forwarding: {}".format(str(err)))
+            client.connect(self.__host, username=self.__user, look_for_keys=True)
+            self.__transport = client.get_transport()
+        except Exception as e:
+            print(f"Failed to connect to remote SSH server: {str(e)}")
             sys.exit(1)
 
-    def client_connect(self):
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect(("127.0.0.1", 4444))
-        return client_socket
-
-    def __serve_connections(self, client_transport: paramiko.Transport):
-        while True:
-            try:
-                chan = client_transport.accept(60)
-                if not chan:
-                    continue
-                thread = threading.Thread(
-                    target=handler,
-                    args=(chan, self.__remote_address, self.__remote_port),
-                )
-                thread.start()
-            except Exception as err:
-                client_transport.cancel_port_forward("", 4444)
-                client_transport.close()
-                print(
-                    f"Error occured while proxying to {self.__remote_address}: {str(err)}"
-                )
-
-
-def handler(channel, remote_address, remote_port):
-    remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        remote_socket.connect((remote_address, remote_port))
-    except:
-        print(f"Unable to connect to {remote_address}:{remote_port}")
-        sys.exit(1)
+    def client_connect(self, client_socket: socket.socket = None):
+        try:
+            return self.__transport.open_channel(
+                "direct-tcpip",
+                (self.__remote_address, self.__remote_port),
+                client_socket.getpeername(),
+            )
+        except Exception as e:
+            print(f"Failed to open tunnel: {str(e)}")
 
 
 def load_config(config: dict) -> SshProvider:

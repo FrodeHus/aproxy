@@ -121,7 +121,7 @@ class Proxy:
         global config
         if self.__config.provider:
             provider = config.providers[self.__config.provider]
-            self._remote = provider.client_connect()
+            self.__remote = provider.client_connect(self.__local)
         else:
             remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             remote_socket.connect(
