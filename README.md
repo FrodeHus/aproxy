@@ -52,8 +52,80 @@ Loaded config for 2 proxies
 
 ```
 
+# Providers
+
+You can use providers if you need to pivot through other protocols to reach your destination.
+For example, you can proxy to a remote host on the other side of a SSH server by using the SSH provider.
+
+Define the provider configuration block in you `proxy.json` and then reference the provider configuration you wish to use in the proxy configuration:
+
+```json
+{
+    "providerConfig": [
+        {
+            "name": "provider1",
+            "provider": {
+                "name": "dummyprovider",
+                "username": "abcdef",
+                "password": "dummy"
+            }
+        }
+    ],
+    "proxies": [
+        {
+            "localPort": 4444,
+            "localHost": "0.0.0.0",
+            "remotePort": 443,
+            "remoteHost": "192.168.0.1",
+            "verbosity": 0,
+            "provider": "provider1"
+        }
+   ]
+}
+```
+
+You define multiple configurations for the same type of provider by giving them different names and then reference those in the various proxy configurations.
+
+## SSH local port forwarding
+
+Right now, the SSH provider only supports ssh key authentication.
+
+SSH provider configuration:
+
+```json
+{
+    "name": "myprivateserver",
+    "provider": {
+        "name": "ssh",
+        "host": "172.16.0.1",
+        "user": "dummy",
+    }
+}
+```
+
+This can now be used by different proxies reaching different remote hosts:
+
+```json
+"proxies": [
+        {
+            "localPort": 4444,
+            "localHost": "0.0.0.0",
+            "remotePort": 443,
+            "remoteHost": "192.168.0.2",
+            "verbosity": 0,
+            "provider": "myprivateserver"
+        },
+        {
+            "localPort": 5555,
+            "localHost": "0.0.0.0",
+            "remotePort": 80,
+            "remoteHost": "192.168.0.5",
+            "verbosity": 3,
+            "provider": "myprivateserver"
+        }
+    ]
+```
+
 ## Future notes
 
 - Plugin support for manipulating data going in/out.
-- Encrypted channels
-- Port-forwarding through SSH
