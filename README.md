@@ -88,8 +88,6 @@ You define multiple configurations for the same type of provider by giving them 
 
 ## SSH local port forwarding
 
-Right now, the SSH provider only supports ssh key authentication.
-
 SSH provider configuration:
 
 ```json

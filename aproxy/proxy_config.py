@@ -1,6 +1,7 @@
 import json
 import importlib
 from aproxy.providers.provider_config import ProviderConfigItem, ProviderConfig
+from colorama import Fore
 
 
 class ProxyConfig:
@@ -55,8 +56,12 @@ def __load_provider_config(cfg: dict):
         name = provider["name"]
         provider_name = provider["provider"]["name"]
         full_name = "aproxy.providers." + provider_name
+        print(
+            f"[*] loading provider configuration for {provider_name} ({full_name}) as {name}"
+        )
         provider_module = importlib.import_module(full_name)
         provider = provider_module.load_config(provider["provider"])
+        provider.connect()
         providers[name] = provider
 
     return providers

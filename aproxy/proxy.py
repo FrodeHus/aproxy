@@ -27,7 +27,7 @@ def start_from_config(configFile: str):
     global config
     config = load_config(configFile)
 
-    print("Loaded config for {} proxies".format(len(config.proxies)))
+    print("[*] loaded config for {} proxies".format(len(config.proxies)))
     for proxy in config.proxies:
         thread = threading.Thread(target=start_proxy, args=(proxy,))
         thread.start()
@@ -53,13 +53,7 @@ def start_proxy(proxy_config: ProxyItem):
     remote_socket: socket.socket = None
     try:
         server.bind((proxy_config.local_host, proxy_config.local_port))
-        print(
-            "[*] Listening on %s:%d"
-            % (proxy_config.local_host, proxy_config.local_port)
-        )
-        if proxy_config.provider:
-            provider = config.providers[proxy_config.provider]
-            provider.connect()
+        print(f"[*] Listening on {proxy_config.local_host}:{proxy_config.local_port}")
 
     except Exception as e:
         print(
