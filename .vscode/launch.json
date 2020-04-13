@@ -13,7 +13,7 @@
                 "proxy",
                 "start",
                 "--configFile",
-                "sampleconfig.json",
+                "/home/frode/citadel.json",
             ]
         }
     ]

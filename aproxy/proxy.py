@@ -59,12 +59,11 @@ def start_proxy(proxy_config: ProxyItem):
         )
         if proxy_config.provider:
             provider = config.providers[proxy_config.provider]
-            remote_socket = provider.connect()
+            provider.connect(proxy_config.remote_host, proxy_config.remote_port)
 
     except Exception as e:
         print(
-            "[!!] Failed to listen on %s:%d"
-            % (proxy_config.local_host, proxy_config.local_port)
+            f"[!!] Failed to listen on {proxy_config.local_host}:{proxy_config.local_port}: {str(e)}"
         )
         print(e)
         sys.exit(0)
@@ -122,7 +121,7 @@ class Proxy:
         global config
         if self.__config.provider:
             provider = config.providers[self.__config.provider]
-            self._remote = provider.connect()
+            self._remote = provider.client_connect()
         else:
             remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             remote_socket.connect(

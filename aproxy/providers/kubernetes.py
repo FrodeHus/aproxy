@@ -17,7 +17,8 @@ class KubernetesProvider(ProviderConfigItem):
         self.__pod = pod
         self.__context = context
 
-    def connect(self) -> socket.socket:
+    def connect(self, remote_address: str, remote_port: int) -> socket.socket:
+        super().connect(remote_address, remote_port)
         print("connecting to kubernetes [context: {}] ....".format(self.__context))
         possibilies = self.__run_checks()
         if not possibilies.passthrough_ok:
