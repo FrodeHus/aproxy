@@ -9,8 +9,6 @@ from colorama import Fore
 
 
 class KubernetesProvider(ProviderConfigItem):
-    EXEC_URL = "wss://{}:8443/api/v1/namespaces/default/pods/{}/exec?command={}&stderr=true&stdin=true&stdout=true&tty=false"
-
     def __init__(
         self, name, context: str = None,
     ):
@@ -18,27 +16,29 @@ class KubernetesProvider(ProviderConfigItem):
         self.__context = context
         config.load_kube_config(context=context)
         self.__client = client.CoreV1Api()
+
+    def connect(self) -> socket.socket:
+        super().connect()
         print(f"[*] active host is {configuration.Configuration().host}")
         print("[*] detecting cluster services")
         services = self.__find_services()
         for svc in services:
             print(f"\t{svc[0].ljust(50)}\tip: {svc[1].ljust(15)}")
         pods = self.__client.list_pod_for_all_namespaces()
-        print("[-] checking for exec capabilities...")
+        print("[+] checking for exec capabilities...")
+        pod_capabilities = []
         for pod_info in pods.items:
             capabilities = self.__run_checks(pod_info)
-            print(f"\t{capabilities}")
+            pod_capabilities.append(capabilities)
 
-    def connect(self, remote_address: str, remote_port: int) -> socket.socket:
-        super().connect()
+        self.eligible_pods = [pod for pod in pod_capabilities if pod.can_connect()]
 
-        print("connecting to kubernetes [context: {}] ....".format(self.__context))
-        possibilies = self.__run_checks()
-        if not possibilies.passthrough_ok():
-            self.__upload_client()
-        else:
-            pass
-        return self.__create_connection(None, None)
+    def client_connect(self, remote_address, remote_port, client_socket):
+        super().client_connect(remote_address, remote_port, client_socket)
+
+        print(f"[+] valid pods for proxy staging: {len(self.eligible_pods)}")
+        print(f"[+] selecting {self.eligible_pods[0]}")
+        self.__create_connection(self.eligible_pods[0], remote_address, remote_port)
 
     def __run_checks(self, pod_info: V1Pod) -> KubeCapabilities:
         user_script = "whoami"
@@ -120,11 +120,12 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
         print("uploading payload....")
         pass
 
-    def __create_connection(self, host: str, port: int):
-        print("connecting to {}:{}... ".format(host, port))
-        pass
-
-    def __can_I_do_this_without_uploads(self) -> bool:
+    def __create_connection(
+        self, pod: KubeCapabilities, remote_address: str, remote_port: int
+    ):
+        print(
+            f"[+] starting reverse proxy on {pod.namespace}/{pod.pod_name} using {pod.utils[0]} for {remote_address}:{remote_port}"
+        )
         pass
 
 

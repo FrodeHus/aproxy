@@ -43,6 +43,9 @@ class KubeCapabilities:
     def passthrough_ok(self):
         return False
 
+    def can_connect(self):
+        return self.can_exec is ExecCap.FULL and self.utils and "socat" in self.utils
+
     def __str__(self):
         color = Fore.GREEN
         if self.can_exec is ExecCap.LIMITED and not self.user:
