@@ -3,12 +3,6 @@ import sys
 import socket
 import paramiko
 import threading
-import socketserver
-
-
-class ForwardServer(socketserver.ThreadingTCPServer):
-    daemon_threads = True
-    allow_reuse_address = True
 
 
 class SshProvider(ProviderConfigItem):
