@@ -7,6 +7,9 @@ from kubernetes.client.api import core_v1_api
 from kubernetes.stream import stream
 from colorama import Fore
 from progress.bar import FillingCirclesBar
+import select
+import websocket
+import six
 
 
 class KubernetesProvider(ProviderConfigItem):
@@ -29,14 +32,13 @@ class KubernetesProvider(ProviderConfigItem):
             f"[*] found {len(pods.items)} pods - checking for eligible staging candidates (this may take a while)"
         )
         pod_capabilities = []
-        with FillingCirclesBar("Processing...", max=len(pods.items)) as bar:
+        with FillingCirclesBar("[*] Processing...", max=len(pods.items)) as bar:
             for pod_info in pods.items:
                 capabilities = self.__run_checks(pod_info)
                 pod_capabilities.append(capabilities)
                 bar.next()
 
         self.eligible_pods = [pod for pod in pod_capabilities if pod.can_connect()]
-        print(f"\tfound {len(self.eligible_pods)}")
         self.is_connected = True
 
     def client_connect(self, remote_address, remote_port, client_socket):
@@ -44,7 +46,9 @@ class KubernetesProvider(ProviderConfigItem):
 
         print(f"[+] valid pods for proxy staging: {len(self.eligible_pods)}")
         print(f"[+] selecting {self.eligible_pods[0]}")
-        self.__create_connection(self.eligible_pods[0], remote_address, remote_port)
+        self.__create_connection(
+            self.eligible_pods[0], remote_address, remote_port, client_socket
+        )
 
     def __run_checks(self, pod_info: V1Pod) -> KubeCapabilities:
         user_script = "whoami"
@@ -126,48 +130,82 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
         print("uploading payload....")
         pass
 
+    def __payload_already_running(
+        self, pod: V1Pod, remote_address: str, remote_port: int
+    ):
+        socat_cmd = f"socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port}"
+        script = f"""
+if [ -n "$(ps -ef | grep '{socat_cmd}')]; then; echo running; fi;
+        """
+        result = self.__exec(script, pod.metadata.name, pod.metadata.namespace)
+        if result and result.find("running") != -1:
+            return True
+        return False
+
     def __create_connection(
-        self, pod: KubeCapabilities, remote_address: str, remote_port: int
+        self,
+        pod: KubeCapabilities,
+        remote_address: str,
+        remote_port: int,
+        client_socket: socket.socket,
     ):
         print(
             f"[+] starting reverse proxy on {pod.namespace}/{pod.pod_name} using {pod.utils[0]} for {remote_address}:{remote_port}"
         )
+        socat_cmd = f"socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port}"
         script = f"""
-socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port} &
+if [ -z "$(ps -ef | grep '{socat_cmd}')]; then; {socat_cmd} &; fi;
         """
         result = self.__exec(script, pod.pod_name, pod.namespace)
-        get = stream(
-            self.__client.connect_get_namespaced_pod_portforward,
-            pod.pod_name,
-            pod.namespace,
-            ports=remote_port,
-            _request_timeout=10,
-            _preload_content=False,
-        )
 
-        put = stream(
+        fwd = stream(
             self.__client.connect_post_namespaced_pod_portforward,
             pod.pod_name,
             pod.namespace,
             ports=remote_port,
-            _request_timeout=10,
             _preload_content=False,
         )
 
-        while get.is_open():
-            get.update(timeout=1)
-            put.update(timeout=1)
-            put.write_stdin("GET / HTTP/1.1\n\n")
-            if get.peek_stdout():
-                print("GET STDOUT: %s" % get.read_stdout())
-            if put.peek_stdout():
-                print("PUT STDOUT: %s" % put.read_stdout())
-            if get.peek_stderr():
-                print("GET STDERR: %s" % get.read_stderr())
-            if put.peek_stderr():
-                print("PUT STDERR: %s" % put.read_stderr())
+        remote: websocket.WebSocket = fwd.sock
 
-        pass
+        while True:
+            r, _, _ = select.select([client_socket, remote], [], [])
+            if client_socket in r:
+                data = client_socket.recv(1024)
+                if len(data) == 0:
+                    break
+                binary = six.PY3 and type(data) == six.binary_type
+                opcode = (
+                    websocket.ABNF.OPCODE_BINARY
+                    if binary
+                    else websocket.ABNF.OPCODE_TEXT
+                )
+                channel_prefix = chr(0)
+                if binary:
+                    channel_prefix = six.binary_type(channel_prefix, "ascii")
+                payload = channel_prefix + data
+                remote.send(payload, opcode=opcode)
+
+            if remote in r:
+                op_code, frame = remote.recv_data_frame(True)
+                if op_code == websocket.ABNF.OPCODE_CLOSE:
+                    if client_socket:
+                        client_socket.close()
+                    break
+
+                if (
+                    op_code == websocket.ABNF.OPCODE_BINARY
+                    or op_code == websocket.ABNF.OPCODE_TEXT
+                ):
+                    data = frame.data
+                if len(data) == 0:
+                    break
+
+                # seems to be some kubernetes websocket control messages that gets sent - typically "\x00@\t"
+                if data[1] == ord("@"):
+                    continue
+                data = data[1:]
+                client_socket.send(data)
 
 
 def load_config(config: dict) -> KubernetesProvider:

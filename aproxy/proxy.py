@@ -115,7 +115,7 @@ class Proxy:
         if self.__config.provider:
             provider = config.providers[self.__config.provider]
             if not provider.is_connected:
-                print("[*] connecting to provider")
+                print("[*] connection was deferred - connecting to provider now...")
                 provider.connect()
 
             self.__remote = provider.client_connect(
@@ -131,7 +131,7 @@ class Proxy:
     def __proxy_loop(self):
         try:
             while True:
-                if self.__stop:
+                if self.__stop or not self.__remote or not self.__local:
                     break
                 r, w, x = select.select([self.__local, self.__remote], [], [])
                 if self.__local in r:
