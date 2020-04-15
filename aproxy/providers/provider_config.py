@@ -2,6 +2,8 @@ import json, socket
 
 
 class ProviderConfigItem:
+    is_connected = False
+
     def __init__(self, name: str):
         self.name = name
 

@@ -54,13 +54,17 @@ def __load_provider_config(cfg: dict):
     for provider in cfg:
         name = provider["name"]
         provider_name = provider["provider"]["name"]
+        defer_connect = "deferConnect" in provider and provider["deferConnect"]
         full_name = "aproxy.providers." + provider_name
         print(
             f"[*] loading provider configuration for {provider_name} ({full_name}) as {name}"
         )
         provider_module = importlib.import_module(full_name)
         provider = provider_module.load_config(provider["provider"])
-        provider.connect()
+        if not defer_connect:
+            provider.connect()
+        else:
+            print("\t deferring connect until first use")
         providers[name] = provider
 
     return providers

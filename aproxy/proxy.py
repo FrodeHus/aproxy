@@ -66,7 +66,6 @@ def start_proxy(proxy_config: ProxyItem):
     global stop_proxies
     while not stop_proxies:
         client_socket, addr = server.accept()
-        print(f"[==>] Received incoming connection from {addr[0]}:{str(addr[1])}")
         proxy = Proxy(client_socket, proxy_config, remote_socket)
         proxy.start()
         running_proxies[proxy.name] = proxy
@@ -115,6 +114,10 @@ class Proxy:
         global config
         if self.__config.provider:
             provider = config.providers[self.__config.provider]
+            if not provider.is_connected:
+                print("[*] connecting to provider")
+                provider.connect()
+
             self.__remote = provider.client_connect(
                 self.__config.remote_host, self.__config.remote_port, self.__local
             )

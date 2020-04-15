@@ -24,7 +24,7 @@ class SshProvider(ProviderConfigItem):
         self.__ssh_client: socket.socket = None
 
     def connect(self) -> socket.socket:
-        if self.__ssh_client:
+        if self.is_connected:
             return
 
         print(f"[*] connecting to ssh {self.__user}:{self.__host}...")
@@ -42,6 +42,7 @@ class SshProvider(ProviderConfigItem):
         except Exception as e:
             print(f"Failed to connect to remote SSH server: {str(e)}")
             sys.exit(1)
+        self.is_connected = True
 
     def client_connect(
         self, remote_address: str, remote_port: int, client_socket: socket.socket

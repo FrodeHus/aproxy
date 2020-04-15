@@ -2,6 +2,7 @@
     "providerConfig": [
         {
             "name": "k8s",
+            "deferConnect": true,
             "provider": {
                 "name": "kubernetes",
                 "stagingPod": "dummy",

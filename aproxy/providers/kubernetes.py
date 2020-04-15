@@ -14,26 +14,27 @@ class KubernetesProvider(ProviderConfigItem):
     ):
         super().__init__(name)
         self.__context = context
-        config.load_kube_config(context=context)
-        self.__client = client.CoreV1Api()
 
     def connect(self) -> socket.socket:
+        if self.is_connected:
+            return
+
         super().connect()
+        config.load_kube_config(context=self.__context)
+        self.__client = client.CoreV1Api()
         print(f"[*] active host is {configuration.Configuration().host}")
-        print("[*] detecting cluster services")
-        services = self.__find_services()
-        for svc in services:
-            print(f"\t{svc[0].ljust(50)}\tip: {svc[1].ljust(15)}")
         pods = self.__client.list_pod_for_all_namespaces()
-        print("[+] checking for exec capabilities...")
+        print(
+            f"[*] found {len(pods.items)} pods - checking for eligible staging candidates"
+        )
         pod_capabilities = []
         for pod_info in pods.items:
             capabilities = self.__run_checks(pod_info)
             pod_capabilities.append(capabilities)
-            if capabilities.can_connect():
-                break
 
         self.eligible_pods = [pod for pod in pod_capabilities if pod.can_connect()]
+        print(f"\tfound {len(self.eligible_pods)}")
+        self.is_connected = True
 
     def client_connect(self, remote_address, remote_port, client_socket):
         super().client_connect(remote_address, remote_port, client_socket)
