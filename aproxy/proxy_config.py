@@ -25,7 +25,6 @@ class ProxyItem:
         self.local_port = local_port
         self.remote_host = remote_host
         self.remote_port = remote_port
-        self.receive_first = False
         self.name = name
         self.verbosity = verbosity
         self.provider = provider

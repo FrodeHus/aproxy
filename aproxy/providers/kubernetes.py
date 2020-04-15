@@ -30,6 +30,8 @@ class KubernetesProvider(ProviderConfigItem):
         for pod_info in pods.items:
             capabilities = self.__run_checks(pod_info)
             pod_capabilities.append(capabilities)
+            if capabilities.can_connect():
+                break
 
         self.eligible_pods = [pod for pod in pod_capabilities if pod.can_connect()]
 
@@ -126,6 +128,41 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
         print(
             f"[+] starting reverse proxy on {pod.namespace}/{pod.pod_name} using {pod.utils[0]} for {remote_address}:{remote_port}"
         )
+        script = f"""
+socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port} &
+        """
+        result = self.__exec(script, pod.pod_name, pod.namespace)
+        get = stream(
+            self.__client.connect_get_namespaced_pod_portforward,
+            pod.pod_name,
+            pod.namespace,
+            ports=remote_port,
+            _request_timeout=10,
+            _preload_content=False,
+        )
+
+        put = stream(
+            self.__client.connect_post_namespaced_pod_portforward,
+            pod.pod_name,
+            pod.namespace,
+            ports=remote_port,
+            _request_timeout=10,
+            _preload_content=False,
+        )
+
+        while get.is_open():
+            get.update(timeout=1)
+            put.update(timeout=1)
+            put.write_stdin("GET / HTTP/1.1\n\n")
+            if get.peek_stdout():
+                print("GET STDOUT: %s" % get.read_stdout())
+            if put.peek_stdout():
+                print("PUT STDOUT: %s" % put.read_stdout())
+            if get.peek_stderr():
+                print("GET STDERR: %s" % get.read_stderr())
+            if put.peek_stderr():
+                print("PUT STDERR: %s" % put.read_stderr())
+
         pass
 
 

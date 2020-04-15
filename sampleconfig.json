@@ -4,7 +4,7 @@
             "name": "k8s",
             "provider": {
                 "name": "kubernetes",
-                "service": "abcdef",
+                "stagingPod": "dummy",
                 "context": "dummy"
             }
         },

@@ -125,93 +125,28 @@ class Proxy:
             )
             self.__remote = remote_socket
 
-    def __receive_first(self, receive_first):
-        if receive_first:
-            remote_buffer = self.__receive_from(self.__remote)
-            if self.__dump_data:
-                hexdump(remote_buffer)
-            remote_buffer = self.__response_handler(remote_buffer)
-            if len(remote_buffer):
-                print(
-                    "[<==] Receiving {} bytes for localhost".format(
-                        str(len(remote_buffer))
-                    )
-                )
-                self.__local.send(remote_buffer)
-
     def __proxy_loop(self):
-        self.__receive_first(self.__config.receive_first)
         try:
             while True:
                 if self.__stop:
                     break
-                self.__handle_traffic(Direction.LOCAL)
-                self.__handle_traffic(Direction.REMOTE)
+                r, w, x = select.select([self.__local, self.__remote], [], [])
+                if self.__local in r:
+                    data = self.__local.recv(1024)
+                    if len(data) == 0:
+                        break
+                    print_info(data, Direction.REMOTE, self.__config)
+                    self.__remote.send(data)
+                if self.__remote in r:
+                    data = self.__remote.recv(1024)
+                    if len(data) == 0:
+                        break
+                    print_info(data, Direction.LOCAL, self.__config)
+                    self.__local.send(data)
         except Exception:
             import traceback
 
             print(traceback.format_exc())
-
-    def __handle_traffic(self, direction: Direction):
-        if direction == Direction.LOCAL:
-            receiver, sender = self.__local, self.__remote
-        else:
-            receiver, sender = self.__remote, self.__local
-
-        buffer = self.__receive_from(receiver)
-
-        print_info(buffer, direction, self.__config)
-        handler = (
-            self.__request_handler
-            if direction == Direction.LOCAL
-            else self.__response_handler
-        )
-
-        buffer = handler(buffer)
-        if not sender:
-            self.__stop = True
-            return
-
-        try:
-            sender.send(buffer)
-        except OSError as e:
-            # socket is dead
-            self.__stop = True
-            return
-
-        if len(buffer) and self.__config.verbosity > 1:
-            outgoing = (
-                Direction.LOCAL if direction is Direction.REMOTE else Direction.REMOTE
-            )
-            print(
-                "{} Sent to {}".format(
-                    get_direction_label(direction, self.__config.name), outgoing.name
-                )
-            )
-
-    def __receive_from(self, connection: socket):
-        buffer = b""
-        if not connection:
-            return buffer
-
-        connection.settimeout(0.1)
-        try:
-
-            while True:
-                chunk = connection.recv(4096)
-                if not chunk:
-                    break
-
-                buffer += chunk
-            if not len(buffer):
-                self.stop()
-
-        except socket.timeout:
-            pass
-        except socket.error as e:
-            print(Fore.RED + e + Fore.RESET)
-            pass
-        return buffer
 
     def __request_handler(self, buffer: str):
         # perform any modifications bound for the remote host here
