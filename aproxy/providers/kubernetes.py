@@ -6,6 +6,7 @@ from kubernetes.client import configuration, V1Pod
 from kubernetes.client.api import core_v1_api
 from kubernetes.stream import stream
 from colorama import Fore
+from progress.bar import FillingCirclesBar
 
 
 class KubernetesProvider(ProviderConfigItem):
@@ -25,12 +26,14 @@ class KubernetesProvider(ProviderConfigItem):
         print(f"[*] active host is {configuration.Configuration().host}")
         pods = self.__client.list_pod_for_all_namespaces()
         print(
-            f"[*] found {len(pods.items)} pods - checking for eligible staging candidates"
+            f"[*] found {len(pods.items)} pods - checking for eligible staging candidates (this may take a while)"
         )
         pod_capabilities = []
-        for pod_info in pods.items:
-            capabilities = self.__run_checks(pod_info)
-            pod_capabilities.append(capabilities)
+        with FillingCirclesBar("Processing...", max=len(pods.items)) as bar:
+            for pod_info in pods.items:
+                capabilities = self.__run_checks(pod_info)
+                pod_capabilities.append(capabilities)
+                bar.next()
 
         self.eligible_pods = [pod for pod in pod_capabilities if pod.can_connect()]
         print(f"\tfound {len(self.eligible_pods)}")

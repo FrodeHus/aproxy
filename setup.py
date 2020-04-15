@@ -14,7 +14,14 @@ setuptools.setup(
     description="Simple tool that lets you run multiple proxies simultaneously",
     url="https://github.com/frodehus/aproxy",
     python_requires=">=3.6",
-    install_requires=["hexdump", "colorama", "knack",],
+    install_requires=[
+        "hexdump",
+        "colorama",
+        "knack",
+        "kubernetes",
+        "paramiko",
+        "progress",
+    ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
