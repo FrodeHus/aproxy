@@ -40,14 +40,19 @@ class KubernetesProvider(ProviderConfigItem):
 
         self.eligible_pods = [pod for pod in pod_capabilities if pod.can_connect()]
         self.is_connected = True
+        print(f"[+] valid pods for proxy staging: {len(self.eligible_pods)}")
+        for pod in self.eligible_pods:
+            print(f"\t{pod.namespace}/{pod.pod_name}")
+
+        print(f"[+] selecting {self.eligible_pods[0]}")
+        self.staging_pod = self.eligible_pods[0]
 
     def client_connect(self, remote_address, remote_port, client_socket):
         super().client_connect(remote_address, remote_port, client_socket)
 
-        print(f"[+] valid pods for proxy staging: {len(self.eligible_pods)}")
-        print(f"[+] selecting {self.eligible_pods[0]}")
+        self.__setup_staging(remote_address, remote_port)
         self.__create_connection(
-            self.eligible_pods[0], remote_address, remote_port, client_socket
+            self.staging_pod, remote_address, remote_port, client_socket
         )
 
     def __run_checks(self, pod_info: V1Pod) -> KubeCapabilities:
@@ -103,7 +108,7 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
             services.append((svc.metadata.name, svc.spec.cluster_ip))
         return services
 
-    def __exec(self, cmd: str, name: str, namespace: str = "default"):
+    def __exec(self, cmd: str, name: str, namespace: str = "default", tty=False):
         exec_command = [
             "/bin/sh",
             "-c",
@@ -118,10 +123,13 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
                 stderr=True,
                 stdin=False,
                 stdout=True,
-                tty=False,
+                tty=tty,
             )
             if not resp:
                 return None
+            if resp.lower().find("no such file or directory") != -1:
+                return None
+
             return resp.strip()
         except:
             return None
@@ -135,12 +143,28 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
     ):
         socat_cmd = f"socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port}"
         script = f"""
-if [ -n "$(ps -ef | grep '{socat_cmd}')]; then; echo running; fi;
+if [ -n "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then echo running; fi;
         """
         result = self.__exec(script, pod.metadata.name, pod.metadata.namespace)
         if result and result.find("running") != -1:
             return True
         return False
+
+    def __setup_staging(self, remote_address: str, remote_port: int):
+        pod = self.staging_pod
+        if not pod:
+            print("[!!] no staging pod available")
+            self.__staging_ready = False
+
+        print(
+            f"[+] starting reverse proxy on {pod.namespace}/{pod.pod_name} using {pod.utils[0]} for {remote_address}:{remote_port}"
+        )
+        socat_cmd = f"socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port}"
+        script = f"""
+if [ -z "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then {socat_cmd} &; fi;
+        """
+        result = self.__exec(script, pod.pod_name, pod.namespace)
+        self.__staging_ready = True
 
     def __create_connection(
         self,
@@ -149,14 +173,9 @@ if [ -n "$(ps -ef | grep '{socat_cmd}')]; then; echo running; fi;
         remote_port: int,
         client_socket: socket.socket,
     ):
-        print(
-            f"[+] starting reverse proxy on {pod.namespace}/{pod.pod_name} using {pod.utils[0]} for {remote_address}:{remote_port}"
-        )
-        socat_cmd = f"socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port}"
-        script = f"""
-if [ -z "$(ps -ef | grep '{socat_cmd}')]; then; {socat_cmd} &; fi;
-        """
-        result = self.__exec(script, pod.pod_name, pod.namespace)
+        if not self.__staging_ready:
+            print("[!!] not forwarding traffic - staging not ready")
+            return
 
         fwd = stream(
             self.__client.connect_post_namespaced_pod_portforward,
@@ -166,7 +185,7 @@ if [ -z "$(ps -ef | grep '{socat_cmd}')]; then; {socat_cmd} &; fi;
             _preload_content=False,
         )
 
-        remote: websocket.WebSocket = fwd.sock
+        remote: websocket.WebSocket = fwd.sock  # let the kubernetes-client do the heavy lifting, then grab the websocket - the stream component is weird with portforwarding
 
         while True:
             r, _, _ = select.select([client_socket, remote], [], [])

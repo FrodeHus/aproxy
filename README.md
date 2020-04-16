@@ -126,6 +126,61 @@ This can now be used by different proxies reaching different remote hosts:
     ]
 ```
 
+## Kubernetes
+
+Sometimes you might need access to resources that are only available to a kubernetes cluster, i.e databases that are locked down on a virtual network only open to the cluster.
+
+This is when you can use the kubernetes provider to open a proxy through a running pod on the cluster and tunnel traffic through that.
+
+__experimental feature - still under development__
+
+Kubernetes provider configuration:
+
+```json
+{
+    "name": "k8s",
+    "provider": {
+        "name": "kubernetes",
+        "context": "dummy-cluster"
+    }
+}
+```
+This will connect to the specified context using the user's kubeconfig. Later, other ways will be available.
+
+Once this provider is configured, it can be used the same way as other providers.
+
+Sample proxy config using kubernetes provider:
+
+```json
+{
+    "name": "sql",
+    "localPort": 1433,
+    "remotePort": 1433,
+    "remoteHost": "10.0.1.10",
+    "provider": "k8s"
+}
+```
+
+Once the provider connects, it will look for eligble pods that can serve as a staging area for the proxy. 
+You will also be able to specify a specific pod that you have prepared in advance.
+
+It does this by checking for certain permissions and available software installed on the pod. If able to install software, it will do so.
+
+This is, again, work in progress. 
+
+Sample output:
+
+```
+[*] active host is https://demo-b3c208b3.01841885-cab3-44b7-a9a2-90d60695807f.privatelink.westeurope.azmk8s.io:8443
+[*] found 25 pods - checking for eligible staging candidates (this may take a while)
+[*] Processing... ◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉ 100%
+[+] valid pods for proxy staging: 2
+    kube-system/kube-proxy-597hr
+    kube-system/kube-proxy-vxpdw
+[+] selecting kube-system/kube-proxy-597hr [exec: FULL] [user: root]    [pkg_mgr: APT]  [utils: ['socat', 'python']]
+[+] starting reverse proxy on kube-system/kube-proxy-597hr using socat for 10.240.0.29:2368                          
+```
+
 ## Future notes
 
 - Plugin support for manipulating data going in/out.
