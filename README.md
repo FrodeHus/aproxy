@@ -178,7 +178,7 @@ Sample output:
     kube-system/kube-proxy-597hr
     kube-system/kube-proxy-vxpdw
 [+] selecting kube-system/kube-proxy-597hr [exec: FULL] [user: root]    [pkg_mgr: APT]  [utils: ['socat', 'python']]
-[+] starting reverse proxy on kube-system/kube-proxy-597hr using socat for 10.240.0.29:2368                          
+[+] starting reverse proxy on kube-system/kube-proxy-597hr using socat for 10.0.1.10:1433                          
 ```
 
 ## Future notes
