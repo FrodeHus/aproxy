@@ -5,7 +5,6 @@ from colorama import Fore
 import select
 from .util import Direction, print_info, get_direction_label
 from .proxy_config import load_config, ProxyConfig, ProxyItem
-import time
 
 running_proxies = {}
 stop_proxies = False
@@ -56,7 +55,6 @@ def start_proxy(proxy_config: ProxyItem):
         provider_config = config.providers[proxy_config.provider]
         provider = provider_config.provider
         if provider_config.depends_on and not provider.is_connected:
-            time.sleep(1)
             print("[*] checking that dependencies are met before connecting")
             if not all(
                 elem in config.providers["initialized"]
