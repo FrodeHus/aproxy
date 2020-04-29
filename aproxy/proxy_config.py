@@ -1,6 +1,6 @@
 import json
 import importlib
-from aproxy.providers.provider_config import ProviderConfigItem, ProviderConfig
+from aproxy.providers.provider_config import Provider, ProviderConfig
 from colorama import Fore
 
 
@@ -50,24 +50,38 @@ def dict_to_config(json_config: dict):
 
 
 def __load_provider_config(cfg: dict):
-    providers = {}
+    provider_configurations = {}
     for provider in cfg:
         name = provider["name"]
+        depends_on = "dependsOn" in provider and provider["dependsOn"]
         provider_name = provider["provider"]["name"]
-        defer_connect = "deferConnect" in provider and provider["deferConnect"]
         full_name = "aproxy.providers." + provider_name
         print(
             f"[*] loading provider configuration for {provider_name} ({full_name}) as {name}"
         )
         provider_module = importlib.import_module(full_name)
         provider = provider_module.load_config(provider["provider"])
-        if not defer_connect:
-            provider.connect()
-        else:
-            print("\t deferring connect until first use")
-        providers[name] = provider
+        provider_config = ProviderConfig(name, depends_on, provider)
 
-    return providers
+        provider_configurations[name] = provider_config
+
+    provider_configurations["initialized"] = __initialize_providers(
+        provider_configurations
+    )
+    return provider_configurations
+
+
+def __initialize_providers(providers: {}):
+    initialized = []
+    for config_name in providers:
+        if config_name in initialized:
+            continue
+        config = providers[config_name]
+        if not config.depends_on:
+            config.provider.connect()
+            if config.provider.is_connected:
+                initialized.append(config_name)
+    return initialized
 
 
 def load_config(configFile: str):

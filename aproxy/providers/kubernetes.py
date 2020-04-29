@@ -1,4 +1,4 @@
-from aproxy.providers.provider_config import ProviderConfigItem
+from aproxy.providers.provider_config import Provider
 from aproxy.providers.kubernetes_capabilites import KubeCapabilities
 import socket
 from kubernetes import client, config
@@ -12,7 +12,7 @@ import websocket
 import six
 
 
-class KubernetesProvider(ProviderConfigItem):
+class KubernetesProvider(Provider):
     def __init__(
         self, name, context: str = None,
     ):

@@ -1,11 +1,11 @@
-from aproxy.providers.provider_config import ProviderConfigItem
+from aproxy.providers.provider_config import Provider
 import sys
 import socket
 import paramiko
 import threading
 
 
-class SshProvider(ProviderConfigItem):
+class SshProvider(Provider):
     def __init__(
         self,
         name: str,

@@ -5,6 +5,7 @@ from colorama import Fore
 import select
 from .util import Direction, print_info, get_direction_label
 from .proxy_config import load_config, ProxyConfig, ProxyItem
+import time
 
 running_proxies = {}
 stop_proxies = False
@@ -52,6 +53,18 @@ def start_proxy(proxy_config: ProxyItem):
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     remote_socket: socket.socket = None
     try:
+        provider_config = config.providers[proxy_config.provider]
+        provider = provider_config.provider
+        if provider_config.depends_on and not provider.is_connected:
+            time.sleep(1)
+            print("[*] checking that dependencies are met before connecting")
+            if not all(
+                elem in config.providers["initialized"]
+                for elem in provider_config.depends_on
+            ):
+                print("not all dependencies are initialized")
+                sys.exit(1)
+            provider.connect()
         server.bind((proxy_config.local_host, proxy_config.local_port))
         print(f"[*] Listening on {proxy_config.local_host}:{proxy_config.local_port}")
 
@@ -113,7 +126,8 @@ class Proxy:
     def __remote_connect(self):
         global config
         if self.__config.provider:
-            provider = config.providers[self.__config.provider]
+            provider_config = config.providers[self.__config.provider]
+            provider = provider_config.provider
             if not provider.is_connected:
                 print("[*] connection was deferred - connecting to provider now...")
                 provider.connect()

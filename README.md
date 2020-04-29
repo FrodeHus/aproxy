@@ -181,6 +181,68 @@ Sample output:
 [+] starting reverse proxy on kube-system/kube-proxy-597hr using socat for 10.0.1.10:1433                          
 ```
 
+## Provider dependencies
+
+It is possible to tunnel through providers. 
+
+### Tunnel example: 
+
+You need to access a MySQL server that is only accessible to the kubernetes cluster. 
+
+You can only connect to kubernetes API server through a jump server that supports SSH. 
+
+Basic setup would be something like this:
+```
+you -> ssh -> kubernetes -> mysql
+``` 
+
+The kubernetes provider is then dependent on the SSH provider and will be a client of that provider.
+
+__Sample config__
+
+```json
+{
+    "providerConfig": [
+        {
+            "name": "k8s",
+            "dependsOn": [
+                "jumpserver"
+            ],
+            "provider": {
+                "name": "kubernetes",
+                "stagingPod": "dummy",
+                "context": "dummy"
+            }
+        },
+        {
+            "name": "jumpserver",
+            "provider": {
+                "name": "ssh",
+                "host": "127.0.0.1",
+                "user": "abcdef",
+            }
+        }
+    ],
+    "proxies": [
+        {
+            "localPort": 443,
+            "localHost": "0.0.0.0",
+            "remotePort": 443,
+            "remoteHost": "<ip of kubernetes API server>",
+            "verbosity": 0,
+            "provider": "jumpserver"
+        },
+        {
+            "localPort": 3306,
+            "localHost": "<ip of mysql server on other side of kubernetes>",
+            "remotePort": 443,
+            "remoteHost": "127.0.0.1", //we connect to the SSH proxy locally
+            "provider": "k8s"
+        }
+    ]
+}
+```
+
 ## Future notes
 
 - Plugin support for manipulating data going in/out.
