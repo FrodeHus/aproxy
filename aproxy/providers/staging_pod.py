@@ -17,7 +17,7 @@ class PackageManager(Enum):
     EMERGE = 5
 
 
-class KubeCapabilities:
+class StagingPod:
     def __init__(
         self, user: str, package_manager: str, utils: [], pod_name: str, namespace: str
     ):

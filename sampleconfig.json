@@ -8,7 +8,10 @@
             "provider": {
                 "name": "kubernetes",
                 "stagingPod": "dummy",
-                "context": "dummy"
+                "context": "dummy",
+                "excludeNamespaces": [
+                    "kube-system"
+                ]
             }
         },
         {

@@ -1,5 +1,6 @@
 from progress.bar import FillingCirclesBar
-from aproxy.providers.kubernetes_capabilites import KubeCapabilities
+from aproxy.providers.provider_config import ProviderConfig
+from aproxy.providers.staging_pod import StagingPod
 from tempfile import TemporaryFile
 from kubernetes.stream.stream import stream
 from kubernetes.client import CoreV1Api, V1Pod
@@ -7,14 +8,22 @@ import tarfile
 import traceback
 
 
-def find_eligible_staging_pod(client: CoreV1Api):
+def find_eligible_staging_pod(client: CoreV1Api, exclude_namespaces: [] = None):
     pods = client.list_pod_for_all_namespaces()
+    available_pods = pods.items
+    if exclude_namespaces:
+        available_pods = [
+            pod
+            for pod in available_pods
+            if pod.metadata.namespace in exclude_namespaces
+        ]
+
     print(
-        f"[*] found {len(pods.items)} pods - checking for eligible staging candidates (this may take a while)"
+        f"[*] found {len(available_pods)} pods - checking for eligible staging candidates (this may take a while)"
     )
     pod_capabilities = []
-    with FillingCirclesBar("[*] Processing...", max=len(pods.items)) as bar:
-        for pod_info in pods.items:
+    with FillingCirclesBar("[*] Processing...", max=len(available_pods)) as bar:
+        for pod_info in available_pods:
             capabilities = run_checks(client, pod_info)
             pod_capabilities.append(capabilities)
             bar.next()
@@ -28,16 +37,16 @@ def find_eligible_staging_pod(client: CoreV1Api):
     return eligible_pods[0]
 
 
-def run_checks(client: CoreV1Api, pod_info: V1Pod) -> KubeCapabilities:
+def run_checks(client: CoreV1Api, pod_info: V1Pod) -> StagingPod:
     user_script = "whoami"
-    user = exec(
+    user = pod_exec(
         client, user_script, pod_info.metadata.name, pod_info.metadata.namespace
     )
 
     utils = find_required_utils(client, pod_info)
     pkg_manager = find_package_manager(client, pod_info)
 
-    return KubeCapabilities(
+    return StagingPod(
         user, pkg_manager, utils, pod_info.metadata.name, pod_info.metadata.namespace,
     )
 
@@ -69,7 +78,7 @@ fi
         pod_info.metadata.name,
         pod_info.metadata.namespace,
     )
-    pkg_manager = exec(
+    pkg_manager = pod_exec(
         client,
         "/bin/sh /tmp/pkg_manager.sh",
         pod_info.metadata.name,
@@ -100,7 +109,7 @@ fi
         pod_info.metadata.name,
         pod_info.metadata.namespace,
     )
-    utils = exec(
+    utils = pod_exec(
         client,
         "sh /tmp/util_check.sh",
         pod_info.metadata.name,
@@ -123,7 +132,9 @@ def find_services(client: CoreV1Api):
     return services
 
 
-def exec(client: CoreV1Api, cmd: str, name: str, namespace: str = "default", tty=False):
+def pod_exec(
+    client: CoreV1Api, cmd: str, name: str, namespace: str = "default", tty=False
+):
     exec_command = cmd.split(" ")
     try:
         resp = stream(
@@ -149,10 +160,7 @@ def exec(client: CoreV1Api, cmd: str, name: str, namespace: str = "default", tty
 
 
 def setup_staging(
-    client: CoreV1Api,
-    staging_pod: KubeCapabilities,
-    remote_address: str,
-    remote_port: int,
+    client: CoreV1Api, staging_pod: StagingPod, remote_address: str, remote_port: int,
 ):
     if not staging_pod:
         print("[!!] no staging pod available")
@@ -172,7 +180,7 @@ fi
         client, script, script_name, staging_pod.pod_name, staging_pod.namespace
     )
 
-    result = exec(
+    result = pod_exec(
         client, f"sh /tmp/{script_name}", staging_pod.pod_name, staging_pod.namespace,
     )
     return True
@@ -187,13 +195,21 @@ def upload_script(
         size = file.tell()
         file.seek(0)
 
-        upload(client, pod_name, namespace, file_name, file, size)
+        upload_to_pod(client, pod_name, namespace, file_name, file, size)
 
 
-def upload(
-    client: CoreV1Api, pod_name: str, namespace: str, file_name, file, file_size
+def upload_to_pod(
+    client: CoreV1Api,
+    pod_name: str,
+    namespace: str,
+    file_name,
+    file,
+    file_size,
+    verbose=False,
 ):
-    print(f"[*] uploading payload [{file_name}]")
+    if verbose:
+        print(f"[*] uploading payload [{file_name}]")
+
     cmd = ["tar", "xvf", "-", "-C", "/tmp"]
     try:
         resp = stream(

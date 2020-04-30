@@ -1,5 +1,5 @@
 from aproxy.providers.provider_config import Provider
-from aproxy.providers.kubernetes_capabilites import KubeCapabilities
+from aproxy.providers.staging_pod import StagingPod
 import socket
 import aproxy.providers.kube_util as kube_util
 from kubernetes import client, config
@@ -20,10 +20,18 @@ class KubernetesProvider(Provider):
         self.__context = context
         self.__staging_pod_name = staging_pod
 
+    @property
+    def exclude_namespaces(self):
+        return self.__exclude_namespaces
+
+    @exclude_namespaces.setter
+    def exclude_namespaces(self, namespaces: []):
+        self.__exclude_namespaces = namespaces
+
     def connect(self) -> socket.socket:
         if self.is_connected:
             return
-
+        self.initializing = True
         super().connect()
         config.load_kube_config(context=self.__context)
         self.__client = client.CoreV1Api()
@@ -37,10 +45,13 @@ class KubernetesProvider(Provider):
                 self.staging_pod = pod_info
 
         if not self.staging_pod:
-            self.staging_pod = kube_util.find_eligible_staging_pod(self.__client)
+            self.staging_pod = kube_util.find_eligible_staging_pod(
+                self.__client, self.exclude_namespaces
+            )
 
         if self.staging_pod:
             self.is_connected = True
+        self.initializing = False
 
     def client_connect(self, remote_address, remote_port, client_socket):
         super().client_connect(remote_address, remote_port, client_socket)
@@ -58,7 +69,7 @@ class KubernetesProvider(Provider):
 
     def __create_connection(
         self,
-        pod: KubeCapabilities,
+        pod: StagingPod,
         remote_address: str,
         remote_port: int,
         client_socket: socket.socket,
@@ -67,9 +78,9 @@ class KubernetesProvider(Provider):
         #     print("[!!] not forwarding traffic - staging not ready")
         #     return
 
-        # need separate clients for each connection
+        k8sclient = client.CoreV1Api()
         fwd = stream(
-            self.__client.connect_post_namespaced_pod_portforward,
+            k8sclient.connect_post_namespaced_pod_portforward,
             pod.pod_name,
             pod.namespace,
             ports=remote_port,
@@ -124,9 +135,18 @@ class KubernetesProvider(Provider):
                 data = data[1:]
                 client_socket.send(data)
 
+        if fwd.is_open():
+            fwd.close()
+
 
 def load_config(config: dict) -> KubernetesProvider:
     name = config["name"]
     context = config["context"]
     staging_pod = config["stagingPod"] if "stagingPod" in config else None
-    return KubernetesProvider(name, context, staging_pod)
+    exclude_namespaces = (
+        config["excludeNamespaces"] if "excludeNamespaces" in config else None
+    )
+
+    provider = KubernetesProvider(name, context, staging_pod)
+    provider.exclude_namespaces = exclude_namespaces
+    return provider

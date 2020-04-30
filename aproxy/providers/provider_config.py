@@ -2,10 +2,10 @@ import json, socket
 
 
 class Provider:
-    is_connected = False
-
     def __init__(self, name: str):
         self.name = name
+        self.__is_connected = False
+        self.__initializing = False
 
     def connect(self):
         pass
@@ -14,6 +14,22 @@ class Provider:
         self, remote_address: str, remote_port: int, client_socket: socket.socket
     ) -> socket.socket:
         pass
+
+    @property
+    def is_connected(self) -> bool:
+        return self.__is_connected
+
+    @is_connected.setter
+    def is_connected(self, value: bool):
+        self.__is_connected = value
+
+    @property
+    def initializing(self) -> bool:
+        return self.__initializing
+
+    @initializing.setter
+    def initializing(self, value: bool):
+        self.__initializing = value
 
 
 class ProviderConfig:

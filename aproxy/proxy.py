@@ -5,6 +5,7 @@ from colorama import Fore
 import select
 from .util import Direction, print_info, get_direction_label
 from .proxy_config import load_config, ProxyConfig, ProxyItem
+import time
 
 running_proxies = {}
 stop_proxies = False
@@ -55,14 +56,27 @@ def start_proxy(proxy_config: ProxyItem):
         provider_config = config.providers[proxy_config.provider]
         provider = provider_config.provider
         if provider_config.depends_on and not provider.is_connected:
-            print("[*] checking that dependencies are met before connecting")
+            print(
+                f"[*] [{proxy_config.name}] checking that dependencies are met before connecting"
+            )
             if not all(
                 elem in config.providers["initialized"]
                 for elem in provider_config.depends_on
             ):
-                print("not all dependencies are initialized")
+                print(
+                    f"[!!] [{proxy_config.name}] not all dependencies are initialized"
+                )
                 sys.exit(1)
-            provider.connect()
+            if not provider.initializing:
+                provider.connect()
+            else:
+                print(
+                    f"[*] [{proxy_config.name}] waiting for provider {provider.name} to finish initializing"
+                )
+
+        while provider.initializing:
+            time.sleep(1)
+
         server.bind((proxy_config.local_host, proxy_config.local_port))
         print(f"[*] Listening on {proxy_config.local_host}:{proxy_config.local_port}")
 

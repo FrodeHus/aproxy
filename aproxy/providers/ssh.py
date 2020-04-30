@@ -27,6 +27,8 @@ class SshProvider(Provider):
         if self.is_connected:
             return
 
+        self.initializing = True
+
         print(f"[*] connecting to ssh {self.__user}:{self.__host}...")
         client = paramiko.SSHClient()
         client.load_system_host_keys()
@@ -43,6 +45,7 @@ class SshProvider(Provider):
             print(f"Failed to connect to remote SSH server: {str(e)}")
             sys.exit(1)
         self.is_connected = True
+        self.initializing = False
 
     def client_connect(
         self, remote_address: str, remote_port: int, client_socket: socket.socket
