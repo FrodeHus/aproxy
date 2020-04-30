@@ -6,6 +6,7 @@ from kubernetes.stream.stream import stream
 from kubernetes.client import CoreV1Api, V1Pod
 import tarfile
 import traceback
+import sys
 
 
 def find_eligible_staging_pod(client: CoreV1Api, exclude_namespaces: [] = None):
@@ -34,8 +35,16 @@ def find_eligible_staging_pod(client: CoreV1Api, exclude_namespaces: [] = None):
         print(f"\t{pod.namespace}/{pod.pod_name}")
 
     staging_pods = [pod for pod in eligible_pods if pod.has_dependencies_installed()]
+    if len(staging_pods) == 0:
+        install_dependencies()
+
     print(f"[+] selecting {staging_pods[0]}")
     return eligible_pods[0]
+
+
+def install_dependencies():
+    print("installing dependencies are not implemented")
+    sys.exit(1)
 
 
 def run_checks(client: CoreV1Api, pod_info: V1Pod) -> StagingPod:
