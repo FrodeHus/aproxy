@@ -8,6 +8,7 @@ from kubernetes.stream import stream
 import select
 import websocket
 import six
+import threading
 import traceback
 
 
@@ -47,9 +48,13 @@ class KubernetesProvider(Provider):
         kube_util.setup_staging(
             self.__client, self.staging_pod, remote_address, remote_port
         )
-        self.__create_connection(
-            self.staging_pod, remote_address, remote_port, client_socket
+
+        thread = threading.Thread(
+            target=self.__create_connection,
+            args=(self.staging_pod, remote_address, remote_port, client_socket),
         )
+
+        thread.start()
 
     def __create_connection(
         self,
@@ -58,10 +63,11 @@ class KubernetesProvider(Provider):
         remote_port: int,
         client_socket: socket.socket,
     ):
-        if not self.__staging_ready:
-            print("[!!] not forwarding traffic - staging not ready")
-            return
+        # if not self.__staging_ready:
+        #     print("[!!] not forwarding traffic - staging not ready")
+        #     return
 
+        # need separate clients for each connection
         fwd = stream(
             self.__client.connect_post_namespaced_pod_portforward,
             pod.pod_name,
