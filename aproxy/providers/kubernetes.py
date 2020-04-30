@@ -13,11 +13,10 @@ import six
 
 
 class KubernetesProvider(Provider):
-    def __init__(
-        self, name, context: str = None,
-    ):
+    def __init__(self, name, context: str = None, staging_pod: str = None):
         super().__init__(name)
         self.__context = context
+        self.__staging_pod_name = staging_pod
 
     def connect(self) -> socket.socket:
         if self.is_connected:
@@ -27,6 +26,29 @@ class KubernetesProvider(Provider):
         config.load_kube_config(context=self.__context)
         self.__client = client.CoreV1Api()
         print(f"[*] active host is {configuration.Configuration().host}")
+        if self.__staging_pod_name:
+            print(f"[*] using configured staging pod: {self.__staging_pod_name}")
+            pod_values = self.__staging_pod_name.split(sep="/")
+            pod = self.__client.read_namespaced_pod(pod_values[1], pod_values[0])
+            pod_info = self.__run_checks(pod)
+            if pod_info.can_connect():
+                self.staging_pod = pod_info
+
+        if not self.staging_pod:
+            self.staging_pod = self.__find_eligible_staging_pod()
+
+        if self.staging_pod:
+            self.is_connected = True
+
+    def client_connect(self, remote_address, remote_port, client_socket):
+        super().client_connect(remote_address, remote_port, client_socket)
+
+        self.__setup_staging(remote_address, remote_port)
+        self.__create_connection(
+            self.staging_pod, remote_address, remote_port, client_socket
+        )
+
+    def __find_eligible_staging_pod(self):
         pods = self.__client.list_pod_for_all_namespaces()
         print(
             f"[*] found {len(pods.items)} pods - checking for eligible staging candidates (this may take a while)"
@@ -39,21 +61,12 @@ class KubernetesProvider(Provider):
                 bar.next()
 
         self.eligible_pods = [pod for pod in pod_capabilities if pod.can_connect()]
-        self.is_connected = True
         print(f"[+] valid pods for proxy staging: {len(self.eligible_pods)}")
         for pod in self.eligible_pods:
             print(f"\t{pod.namespace}/{pod.pod_name}")
 
         print(f"[+] selecting {self.eligible_pods[0]}")
-        self.staging_pod = self.eligible_pods[0]
-
-    def client_connect(self, remote_address, remote_port, client_socket):
-        super().client_connect(remote_address, remote_port, client_socket)
-
-        self.__setup_staging(remote_address, remote_port)
-        self.__create_connection(
-            self.staging_pod, remote_address, remote_port, client_socket
-        )
+        return self.eligible_pods[0]
 
     def __run_checks(self, pod_info: V1Pod) -> KubeCapabilities:
         user_script = "whoami"
@@ -142,9 +155,7 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
         self, pod: V1Pod, remote_address: str, remote_port: int
     ):
         socat_cmd = f"socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port}"
-        script = f"""
-if [ -n "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then echo running; fi;
-        """
+        script = f"""if [ -n "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then echo running; fi;"""
         result = self.__exec(script, pod.metadata.name, pod.metadata.namespace)
         if result and result.find("running") != -1:
             return True
@@ -160,10 +171,8 @@ if [ -n "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then echo running; f
             f"[+] starting reverse proxy on {pod.namespace}/{pod.pod_name} using {pod.utils[0]} for {remote_address}:{remote_port}"
         )
         socat_cmd = f"socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port}"
-        script = f"""
-if [ -z "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then {socat_cmd} &; fi;
-        """
-        result = self.__exec(script, pod.pod_name, pod.namespace)
+        script = f"""if [ -z "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then {socat_cmd} &; fi;"""
+        result = self.__exec(socat_cmd, pod.pod_name, pod.namespace)
         self.__staging_ready = True
 
     def __create_connection(
@@ -206,7 +215,7 @@ if [ -z "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then {socat_cmd} &; 
                 remote.send(payload, opcode=opcode)
 
             if remote in r:
-                op_code, frame = remote.recv_data_frame(True)
+                op_code, frame = remote.recv_data_frame()
                 if op_code == websocket.ABNF.OPCODE_CLOSE:
                     if client_socket:
                         client_socket.close()
@@ -220,8 +229,14 @@ if [ -z "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then {socat_cmd} &; 
                 if len(data) == 0:
                     break
 
-                # seems to be some kubernetes websocket control messages that gets sent - typically "\x00@\t"
-                if data[1] == ord("@"):
+                # seems to be some kubernetes websocket control messages that gets sent
+                if (
+                    data[1] == ord("@")
+                    or data == b"\x00\xea\x0c"
+                    or data == b"\x01\xea\x0c"
+                    or data == b"\x00P\x00"
+                    or data == b"\x01P\x00"
+                ):
                     continue
                 data = data[1:]
                 client_socket.send(data)
@@ -230,4 +245,5 @@ if [ -z "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then {socat_cmd} &; 
 def load_config(config: dict) -> KubernetesProvider:
     name = config["name"]
     context = config["context"]
-    return KubernetesProvider(name, context)
+    staging_pod = config["stagingPod"] if "stagingPod" in config else None
+    return KubernetesProvider(name, context, staging_pod)
