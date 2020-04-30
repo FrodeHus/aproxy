@@ -44,7 +44,11 @@ class StagingPod:
         return False
 
     def can_connect(self):
-        return self.can_exec is ExecCap.FULL and self.utils and "socat" in self.utils
+        return (
+            self.can_exec is ExecCap.FULL
+            and self.utils
+            and ("socat" in self.utils or self.package_manager != PackageManager.NONE)
+        )
 
     def __str__(self):
         color = Fore.GREEN

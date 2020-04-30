@@ -15,7 +15,7 @@ def find_eligible_staging_pod(client: CoreV1Api, exclude_namespaces: [] = None):
         available_pods = [
             pod
             for pod in available_pods
-            if pod.metadata.namespace in exclude_namespaces
+            if pod.metadata.namespace not in exclude_namespaces
         ]
 
     print(
