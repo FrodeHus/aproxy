@@ -13,7 +13,7 @@ To install: `pip3 install aproxy`
 
 Example config `proxy.json`:
 
-```
+```json
 {
     "proxies": [
         {
@@ -37,7 +37,7 @@ Example config `proxy.json`:
 
 Start all the proxies with `aproxy proxy start --configFile proxy.json`
 
-```
+```text
 Loaded config for 2 proxies
 [*] Listening on 0.0.0.0:4444
 [*] Listening on 127.0.0.1:3306
@@ -144,6 +144,7 @@ Kubernetes provider configuration:
         "context": "dummy-cluster"
     }
 }
+
 ```
 This will connect to the specified context using the user's kubeconfig. Later, other ways will be available.
 
@@ -170,7 +171,7 @@ This is, again, work in progress.
 
 Sample output:
 
-```
+```text
 [*] active host is https://demo-b3c208b3.01841885-cab3-44b7-a9a2-90d60695807f.privatelink.westeurope.azmk8s.io:8443
 [*] found 25 pods - checking for eligible staging candidates (this may take a while)
 [*] Processing... ◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉◉ 100%
@@ -178,27 +179,28 @@ Sample output:
     kube-system/kube-proxy-597hr
     kube-system/kube-proxy-vxpdw
 [+] selecting kube-system/kube-proxy-597hr [exec: FULL] [user: root]    [pkg_mgr: APT]  [utils: ['socat', 'python']]
-[+] starting reverse proxy on kube-system/kube-proxy-597hr using socat for 10.0.1.10:1433                          
+[+] starting reverse proxy on kube-system/kube-proxy-597hr using socat for 10.0.1.10:1433
 ```
 
 ## Provider dependencies
 
-It is possible to tunnel through providers. 
+It is possible to tunnel through providers.
 
-### Tunnel example: 
+### Tunnel example
 
 You need to access a MySQL server that is only accessible to the kubernetes cluster. 
 
 You can only connect to kubernetes API server through a jump server that supports SSH. 
 
 Basic setup would be something like this:
-```
+
+```text
 you -> ssh -> kubernetes -> mysql
-``` 
+```
 
 The kubernetes provider is then dependent on the SSH provider and will be a client of that provider.
 
-__Sample config__
+#### Sample config
 
 ```json
 {
@@ -234,9 +236,8 @@ __Sample config__
         },
         {
             "localPort": 3306,
-            "localHost": "<ip of mysql server on other side of kubernetes>",
-            "remotePort": 443,
-            "remoteHost": "127.0.0.1", //we connect to the SSH proxy locally
+            "remotePort": 3306,
+            "remoteHost": "<ip of mysql server on other side of kubernetes>",
             "provider": "k8s"
         }
     ]
