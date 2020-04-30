@@ -4,10 +4,7 @@ import socket
 import aproxy.providers.kube_util as kube_util
 from kubernetes import client, config
 from kubernetes.client import configuration, V1Pod
-from kubernetes.client.api import core_v1_api
 from kubernetes.stream import stream
-from colorama import Fore
-from progress.bar import FillingCirclesBar
 import select
 import websocket
 import six
