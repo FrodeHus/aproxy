@@ -10,11 +10,16 @@ from progress.bar import FillingCirclesBar
 import select
 import websocket
 import six
+from tempfile import TemporaryFile
+import tarfile
+import traceback
 
 
 class KubernetesProvider(Provider):
     def __init__(self, name, context: str = None, staging_pod: str = None):
         super().__init__(name)
+        self.staging_pod = None
+        self.__staging_ready = False
         self.__context = context
         self.__staging_pod_name = staging_pod
 
@@ -86,14 +91,35 @@ class KubernetesProvider(Provider):
         )
 
     def __find_package_manager(self, pod_info: V1Pod):
-        pkg_manager_script = """
-if [ -x "$(which apk 2>/dev/null)" ]; then echo apk; fi;
-if [ -x "$(which apt-get 2>/dev/null)" ]; then echo apt; fi;
-if [ -x "$(which zypper 2>/dev/null)" ]; then echo zypper; fi;
-if [ -x "$(which yum 2>/dev/null)" ]; then echo yum; fi;
+        pkg_manager_script = """#!/bin/sh
+if [ -x "$(which apk 2>/dev/null)" ]
+then
+    echo apk
+fi
+if [ -x "$(which apt-get 2>/dev/null)" ]
+then
+    echo apt
+fi
+if [ -x "$(which zypper 2>/dev/null)" ]
+then
+    echo zypper
+fi
+if [ -x "$(which yum 2>/dev/null)" ]
+then
+    echo yum
+fi
             """
+
+        self.__upload_script(
+            pkg_manager_script,
+            "pkg_manager.sh",
+            pod_info.metadata.name,
+            pod_info.metadata.namespace,
+        )
         pkg_manager = self.__exec(
-            pkg_manager_script, pod_info.metadata.name, pod_info.metadata.namespace,
+            "/bin/sh /tmp/pkg_manager.sh",
+            pod_info.metadata.name,
+            pod_info.metadata.namespace,
         )
 
         if pkg_manager and pkg_manager.find("exec failed") != -1:
@@ -102,11 +128,25 @@ if [ -x "$(which yum 2>/dev/null)" ]; then echo yum; fi;
         return pkg_manager
 
     def __find_required_utils(self, pod_info: V1Pod):
-        script = """
-if [ -x "$(which socat 2>/dev/null)" ]; then echo socat; fi;
-if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
+        script = """#!/bin/sh
+if [ -x "$(which socat 2>/dev/null)" ]
+then
+    echo socat
+fi
+if [ -x "$(which python 2>/dev/null)" ]
+then
+    echo python
+fi
         """
-        utils = self.__exec(script, pod_info.metadata.name, pod_info.metadata.namespace)
+        self.__upload_script(
+            script, "util_check.sh", pod_info.metadata.name, pod_info.metadata.namespace
+        )
+        utils = self.__exec(
+            "sh /tmp/util_check.sh",
+            pod_info.metadata.name,
+            pod_info.metadata.namespace,
+        )
+
         if utils and utils.find("exec failed") != -1:
             utils = None
         elif utils:
@@ -122,11 +162,7 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
         return services
 
     def __exec(self, cmd: str, name: str, namespace: str = "default", tty=False):
-        exec_command = [
-            "/bin/sh",
-            "-c",
-            f"echo '{cmd}' > /tmp/test.sh; sh /tmp/test.sh; rm /tmp/test.sh",
-        ]
+        exec_command = cmd.split(" ")
         try:
             resp = stream(
                 self.__client.connect_get_namespaced_pod_exec,
@@ -144,22 +180,14 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
                 return None
 
             return resp.strip()
-        except:
+        except RuntimeError as err:
+            print(f"[!!] failed when executing command '{cmd}''")
+            print(traceback.format_exc())
             return None
 
     def __upload_client(self):
         print("uploading payload....")
         pass
-
-    def __payload_already_running(
-        self, pod: V1Pod, remote_address: str, remote_port: int
-    ):
-        socat_cmd = f"socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port}"
-        script = f"""if [ -n "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then echo running; fi;"""
-        result = self.__exec(script, pod.metadata.name, pod.metadata.namespace)
-        if result and result.find("running") != -1:
-            return True
-        return False
 
     def __setup_staging(self, remote_address: str, remote_port: int):
         pod = self.staging_pod
@@ -170,10 +198,70 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
         print(
             f"[+] starting reverse proxy on {pod.namespace}/{pod.pod_name} using {pod.utils[0]} for {remote_address}:{remote_port}"
         )
-        socat_cmd = f"socat TCP-LISTEN:{remote_port},reuseaddr,fork TCP:{remote_address}:{remote_port}"
-        script = f"""if [ -z "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]; then {socat_cmd} &; fi;"""
-        result = self.__exec(socat_cmd, pod.pod_name, pod.namespace)
+
+        script = f"""#!/bin/sh
+if [ -z "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]
+then 
+    socat tcp-l:{remote_port},reuseaddr,fork tcp:{remote_address}:{remote_port} &
+fi
+"""
+        script_name = f"socat-{str(remote_port)}.sh"
+        self.__upload_script(script, script_name, pod.pod_name, pod.namespace)
+
+        result = self.__exec(f"sh /tmp/{script_name}", pod.pod_name, pod.namespace,)
+
         self.__staging_ready = True
+
+    def __upload_script(
+        self, script: str, file_name: str, pod_name: str, namespace: str
+    ):
+        script += f"\nrm -Rf /tmp/{file_name}\n"
+        with TemporaryFile() as file:
+            file.write(script.encode())
+            size = file.tell()
+            file.seek(0)
+
+            self.__upload(pod_name, namespace, file_name, file, size)
+
+    def __upload(self, pod_name: str, namespace: str, file_name, file, file_size):
+        print(f"[*] uploading payload [{file_name}]")
+        cmd = ["tar", "xvf", "-", "-C", "/tmp"]
+        try:
+            resp = stream(
+                self.__client.connect_get_namespaced_pod_exec,
+                pod_name,
+                namespace,
+                command=cmd,
+                stderr=True,
+                stdin=True,
+                stdout=True,
+                _preload_content=False,
+            )
+
+            source_file = file
+
+            with TemporaryFile() as tar_buffer:
+                with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
+                    tarinfo = tarfile.TarInfo(file_name)
+                    tarinfo.size = file_size
+                    tar.addfile(tarinfo, fileobj=file)
+
+                tar_buffer.seek(0)
+                commands = []
+                commands.append(tar_buffer.read())
+
+                while resp.is_open():
+                    resp.update(timeout=1)
+                    if commands:
+                        c = commands.pop(0)
+                        # print("Running command... %s\n" % c)
+                        resp.write_stdin(c)
+                    else:
+                        break
+                resp.close()
+        except:
+            print("[!!] failed to upload file")
+            return None
 
     def __create_connection(
         self,
@@ -236,6 +324,7 @@ if [ -x "$(which python 2>/dev/null)" ]; then echo python; fi;
                     or data == b"\x01\xea\x0c"
                     or data == b"\x00P\x00"
                     or data == b"\x01P\x00"
+                    or len(data) == 3
                 ):
                     continue
                 data = data[1:]
