@@ -43,12 +43,18 @@ class StagingPod:
     def passthrough_ok(self):
         return False
 
-    def can_connect(self):
+    def can_be_staging(self):
         return (
             self.can_exec is ExecCap.FULL
-            and self.utils
-            and ("socat" in self.utils or self.package_manager != PackageManager.NONE)
+            and self.user == "root"
+            and (
+                (self.utils and "socat" in self.utils)
+                or self.package_manager != PackageManager.NONE
+            )
         )
+
+    def has_dependencies_installed(self):
+        return self.utils and "socat" in self.utils
 
     def __str__(self):
         color = Fore.GREEN

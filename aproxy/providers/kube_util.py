@@ -28,12 +28,13 @@ def find_eligible_staging_pod(client: CoreV1Api, exclude_namespaces: [] = None):
             pod_capabilities.append(capabilities)
             bar.next()
 
-    eligible_pods = [pod for pod in pod_capabilities if pod.can_connect()]
+    eligible_pods = [pod for pod in pod_capabilities if pod.can_be_staging()]
     print(f"[+] valid pods for proxy staging: {len(eligible_pods)}")
     for pod in eligible_pods:
         print(f"\t{pod.namespace}/{pod.pod_name}")
 
-    print(f"[+] selecting {eligible_pods[0]}")
+    staging_pods = [pod for pod in eligible_pods if pod.has_dependencies_installed()]
+    print(f"[+] selecting {staging_pods[0]}")
     return eligible_pods[0]
 
 

@@ -41,7 +41,7 @@ class KubernetesProvider(Provider):
             pod_values = self.__staging_pod_name.split(sep="/")
             pod = self.__client.read_namespaced_pod(pod_values[1], pod_values[0])
             pod_info = kube_util.run_checks(self.__client, pod)
-            if pod_info.can_connect():
+            if pod_info.can_be_staging():
                 self.staging_pod = pod_info
 
         if not self.staging_pod:
