@@ -1,6 +1,6 @@
 from progress.bar import FillingCirclesBar
 from aproxy.providers.provider_config import ProviderConfig
-from aproxy.providers.staging_pod import StagingPod
+from aproxy.providers.staging_pod import PackageManager, StagingPod
 from tempfile import TemporaryFile
 from kubernetes.stream.stream import stream
 from kubernetes.client import CoreV1Api, V1Pod
@@ -36,22 +36,29 @@ def find_eligible_staging_pod(client: CoreV1Api, exclude_namespaces: [] = None):
 
     staging_pods = [pod for pod in eligible_pods if pod.has_dependencies_installed()]
     if len(staging_pods) == 0:
-        install_dependencies()
+        install_dependencies(client, eligible_pods)
 
     print(f"[+] selecting {staging_pods[0]}")
-    return eligible_pods[0]
+    return staging_pods[0]
 
 
-def install_dependencies():
-    print("installing dependencies are not implemented")
-    sys.exit(1)
+def install_dependencies(k8sclient: CoreV1Api, staging_pods: []):
+    for staging_pod in [pod for pod in staging_pods if pod.can_be_staging()]:
+        print(
+            f"[*] installing socat in {staging_pod.namespace}/{staging_pod.pod_name} using {staging_pod.package_manager.name}"
+        )
+
+        if staging_pod.can_exec and staging_pod.package_manager == PackageManager.APT:
+            result = pod_exec(
+                "apt update && apt install -y socat",
+                staging_pod.pod_name,
+                staging_pod.namespace,
+            )
 
 
 def run_checks(client: CoreV1Api, pod_info: V1Pod) -> StagingPod:
     user_script = "whoami"
-    user = pod_exec(
-        client, user_script, pod_info.metadata.name, pod_info.metadata.namespace
-    )
+    user = pod_exec(user_script, pod_info.metadata.name, pod_info.metadata.namespace)
 
     utils = find_required_utils(client, pod_info)
     pkg_manager = find_package_manager(client, pod_info)
@@ -89,7 +96,6 @@ fi
         pod_info.metadata.namespace,
     )
     pkg_manager = pod_exec(
-        client,
         "/bin/sh /tmp/pkg_manager.sh",
         pod_info.metadata.name,
         pod_info.metadata.namespace,
@@ -120,10 +126,7 @@ fi
         pod_info.metadata.namespace,
     )
     utils = pod_exec(
-        client,
-        "sh /tmp/util_check.sh",
-        pod_info.metadata.name,
-        pod_info.metadata.namespace,
+        "sh /tmp/util_check.sh", pod_info.metadata.name, pod_info.metadata.namespace,
     )
 
     if utils and utils.find("exec failed") != -1:
@@ -142,9 +145,8 @@ def find_services(client: CoreV1Api):
     return services
 
 
-def pod_exec(
-    client: CoreV1Api, cmd: str, name: str, namespace: str = "default", tty=False
-):
+def pod_exec(cmd: str, name: str, namespace: str = "default", tty=False):
+    client = CoreV1Api()
     exec_command = cmd.split(" ")
     try:
         resp = stream(
@@ -156,6 +158,7 @@ def pod_exec(
             stdin=False,
             stdout=True,
             tty=tty,
+            _request_timeout=5.0,
         )
         if not resp:
             return None
@@ -191,7 +194,7 @@ fi
     )
 
     result = pod_exec(
-        client, f"sh /tmp/{script_name}", staging_pod.pod_name, staging_pod.namespace,
+        f"sh /tmp/{script_name}", staging_pod.pod_name, staging_pod.namespace,
     )
     return True
 

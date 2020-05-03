@@ -159,7 +159,7 @@ class Proxy:
             while True:
                 if self.__stop or not self.__remote or not self.__local:
                     break
-                r, w, x = select.select([self.__local, self.__remote], [], [])
+                r, w, x = select.select([self.__local, self.__remote], [], [], 5.0)
                 if self.__local in r:
                     data = self.__local.recv(1024)
                     if len(data) == 0:

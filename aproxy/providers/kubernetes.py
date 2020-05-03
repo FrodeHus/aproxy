@@ -11,6 +11,10 @@ import six
 import threading
 import traceback
 
+CHANNEL_STDIN = 0
+CHANNEL_STDOUT = 1
+CHANNEL_ERR = 2
+
 
 class KubernetesProvider(Provider):
     def __init__(self, name, context: str = None, staging_pod: str = None):
@@ -64,7 +68,6 @@ class KubernetesProvider(Provider):
             target=self.__create_connection,
             args=(self.staging_pod, remote_address, remote_port, client_socket),
         )
-
         thread.start()
 
     def __create_connection(
@@ -85,6 +88,7 @@ class KubernetesProvider(Provider):
             pod.namespace,
             ports=remote_port,
             _preload_content=False,
+            _request_timeout=5.0,
         )
 
         remote: websocket.WebSocket = fwd.sock  # let the kubernetes-client do the heavy lifting, then grab the websocket - the stream component is weird with portforwarding
@@ -101,7 +105,7 @@ class KubernetesProvider(Provider):
                     if binary
                     else websocket.ABNF.OPCODE_TEXT
                 )
-                channel_prefix = chr(0)
+                channel_prefix = chr(CHANNEL_STDIN)
                 if binary:
                     channel_prefix = six.binary_type(channel_prefix, "ascii")
                 payload = channel_prefix + data
@@ -122,6 +126,7 @@ class KubernetesProvider(Provider):
                 if len(data) == 0:
                     break
 
+                channel = data[0]
                 # seems to be some kubernetes websocket control messages that gets sent
                 if (
                     data[1] == ord("@")

@@ -7,6 +7,15 @@ from knack import CLI
 from knack.commands import CLICommandsLoader, CommandGroup
 from knack.arguments import ArgumentsContext, CLIArgumentType
 
+LOGO = r"""
+  __ _ _ __  _ __ _____  ___   _
+ / _` | '_ \| '__/ _ \ \/ / | | |
+| (_| | |_) | | | (_) >  <| |_| |
+ \__,_| .__/|_|  \___/_/\_\\__, |
+      |_|                  |___/
+
+"""
+
 
 class CommandLoader(CLICommandsLoader):
     def load_command_table(self, args):
