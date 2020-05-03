@@ -179,7 +179,7 @@ def setup_staging(
         print("[!!] no staging pod available")
         return False
     print(
-        f"[+] starting reverse proxy on {staging_pod.namespace}/{staging_pod.pod_name} using {staging_pod.utils[0]} for {remote_address}:{remote_port}"
+        f"[+] starting proxy on {staging_pod.namespace}/{staging_pod.pod_name} using {staging_pod.utils[0]} for {remote_address}:{remote_port}"
     )
 
     script = f"""#!/bin/sh

@@ -6,6 +6,7 @@ import select
 from .util import Direction, print_info, get_direction_label
 from .proxy_config import load_config, ProxyConfig, ProxyItem
 import time
+from select import poll
 
 running_proxies = {}
 stop_proxies = False
@@ -108,26 +109,26 @@ class Proxy:
         self.name = "{}->{}:{}".format(
             client_socket.getsockname(), config.remote_host, config.remote_port
         )
-        self.__local = client_socket
-        self.__config = config
-        self.__stop = False
+        self._local = client_socket
+        self._config = config
+        self._stop = False
         if remote_host:
             self.__remote = remote_host
         else:
-            self.__remote_connect()
+            self._remote_connect()
 
     def start(self):
-        self.__thread = threading.Thread(target=self.__proxy_loop)
-        self.__thread.start()
+        self._thread = threading.Thread(target=self._proxy_loop)
+        self._thread.start()
 
     def stop(self):
         if self.__stop:
             return
 
-        self.__stop = True
+        self._stop = True
         if self.__local:
-            self.__local.close()
-            self.__local = None
+            self._local.close()
+            self._local = None
 
         if self.__remote:
             self.__remote.close()
@@ -135,52 +136,54 @@ class Proxy:
 
         print(Fore.MAGENTA + "Disconnected " + self.name + Fore.RESET)
 
-    def __remote_connect(self):
+    def _remote_connect(self):
         global config
         if self.__config.provider:
-            provider_config = config.providers[self.__config.provider]
+            provider_config = config.providers[self._config.provider]
             provider = provider_config.provider
             if not provider.is_connected:
                 print("[*] connection was deferred - connecting to provider now...")
                 provider.connect()
 
             self.__remote = provider.client_connect(
-                self.__config.remote_host, self.__config.remote_port, self.__local
+                self._config.remote_host, self._config.remote_port, self._local
             )
         else:
             remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            remote_socket.connect(
-                (self.__config.remote_host, self.__config.remote_port)
-            )
+            remote_socket.connect((self._config.remote_host, self._config.remote_port))
             self.__remote = remote_socket
 
-    def __proxy_loop(self):
+    def _proxy_loop(self):
+        poller = poll()
+        poller.register(self._local, select.POLLIN)
+        poller.register(self.__remote, select.POLLIN)
         try:
             while True:
                 if self.__stop or not self.__remote or not self.__local:
                     break
-                r, w, x = select.select([self.__local, self.__remote], [], [], 5.0)
+                r, w, x = select.select([self._local, self.__remote], [], [], 5.0)
+                # channels = poller.poll(5.0)
                 if self.__local in r:
-                    data = self.__local.recv(1024)
+                    data = self._local.recv(1024)
                     if len(data) == 0:
                         break
-                    print_info(data, Direction.REMOTE, self.__config)
+                    print_info(data, Direction.REMOTE, self._config)
                     self.__remote.send(data)
                 if self.__remote in r:
                     data = self.__remote.recv(1024)
                     if len(data) == 0:
                         break
-                    print_info(data, Direction.LOCAL, self.__config)
-                    self.__local.send(data)
+                    print_info(data, Direction.LOCAL, self._config)
+                    self._local.send(data)
         except Exception:
             import traceback
 
             print(traceback.format_exc())
 
-    def __request_handler(self, buffer: str):
+    def _request_handler(self, buffer: str):
         # perform any modifications bound for the remote host here
         return buffer
 
-    def __response_handler(self, buffer: str):
+    def _response_handler(self, buffer: str):
         # perform any modifictions bound for the local host here
         return buffer

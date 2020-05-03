@@ -44,12 +44,12 @@ def dict_to_config(json_config: dict):
             local_host, local_port, remote_host, remote_port, name, verbosity, provider
         )
         proxies.append(proxy)
-    providers = __load_provider_config(json_config["providerConfig"])
+    providers = _load_provider_config(json_config["providerConfig"])
     config = ProxyConfig(providers, proxies)
     return config
 
 
-def __load_provider_config(cfg: dict):
+def _load_provider_config(cfg: dict):
     provider_configurations = {}
     for provider in cfg:
         name = provider["name"]
@@ -65,13 +65,13 @@ def __load_provider_config(cfg: dict):
 
         provider_configurations[name] = provider_config
 
-    provider_configurations["initialized"] = __initialize_providers(
+    provider_configurations["initialized"] = _initialize_providers(
         provider_configurations
     )
     return provider_configurations
 
 
-def __initialize_providers(providers: {}):
+def _initialize_providers(providers: {}):
     initialized = []
     for config_name in providers:
         if config_name in initialized:

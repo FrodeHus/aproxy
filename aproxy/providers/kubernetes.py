@@ -20,9 +20,9 @@ class KubernetesProvider(Provider):
     def __init__(self, name, context: str = None, staging_pod: str = None):
         super().__init__(name)
         self.staging_pod = None
-        self.__staging_ready = False
-        self.__context = context
-        self.__staging_pod_name = staging_pod
+        self._staging_ready = False
+        self._context = context
+        self._staging_pod_name = staging_pod
 
     @property
     def exclude_namespaces(self):
@@ -30,27 +30,27 @@ class KubernetesProvider(Provider):
 
     @exclude_namespaces.setter
     def exclude_namespaces(self, namespaces: []):
-        self.__exclude_namespaces = namespaces
+        self._exclude_namespaces = namespaces
 
     def connect(self) -> socket.socket:
         if self.is_connected:
             return
         self.initializing = True
         super().connect()
-        config.load_kube_config(context=self.__context)
-        self.__client = client.CoreV1Api()
+        config.load_kube_config(context=self._context)
+        self._client = client.CoreV1Api()
         print(f"[*] active host is {configuration.Configuration().host}")
-        if self.__staging_pod_name:
+        if self._staging_pod_name:
             print(f"[*] using configured staging pod: {self.__staging_pod_name}")
-            pod_values = self.__staging_pod_name.split(sep="/")
-            pod = self.__client.read_namespaced_pod(pod_values[1], pod_values[0])
-            pod_info = kube_util.run_checks(self.__client, pod)
+            pod_values = self._staging_pod_name.split(sep="/")
+            pod = self._client.read_namespaced_pod(pod_values[1], pod_values[0])
+            pod_info = kube_util.run_checks(self._client, pod)
             if pod_info.can_be_staging():
                 self.staging_pod = pod_info
 
         if not self.staging_pod:
             self.staging_pod = kube_util.find_eligible_staging_pod(
-                self.__client, self.exclude_namespaces
+                self._client, self.exclude_namespaces
             )
 
         if self.staging_pod:
@@ -61,16 +61,16 @@ class KubernetesProvider(Provider):
         super().client_connect(remote_address, remote_port, client_socket)
 
         kube_util.setup_staging(
-            self.__client, self.staging_pod, remote_address, remote_port
+            self._client, self.staging_pod, remote_address, remote_port
         )
 
         thread = threading.Thread(
-            target=self.__create_connection,
+            target=self._create_connection,
             args=(self.staging_pod, remote_address, remote_port, client_socket),
         )
         thread.start()
 
-    def __create_connection(
+    def _create_connection(
         self,
         pod: StagingPod,
         remote_address: str,

@@ -17,11 +17,11 @@ class SshProvider(Provider):
         super().__init__(name)
         if not host or not user:
             raise Exception("missing ssh config")
-        self.__host = host
-        self.__user = user
-        self.__password = password
-        self.__ssh_keys = ssh_keys
-        self.__ssh_client: socket.socket = None
+        self._host = host
+        self._user = user
+        self._password = password
+        self._ssh_keys = ssh_keys
+        self._ssh_client: socket.socket = None
 
     def connect(self) -> socket.socket:
         if self.is_connected:
@@ -35,12 +35,12 @@ class SshProvider(Provider):
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             client.connect(
-                self.__host,
-                username=self.__user,
-                password=self.__password,
+                self._host,
+                username=self._user,
+                password=self._password,
                 look_for_keys=True,
             )
-            self.__ssh_client = client
+            self._ssh_client = client
         except Exception as e:
             print(f"Failed to connect to remote SSH server: {str(e)}")
             sys.exit(1)
@@ -51,7 +51,7 @@ class SshProvider(Provider):
         self, remote_address: str, remote_port: int, client_socket: socket.socket
     ):
         try:
-            transport = self.__ssh_client.get_transport()
+            transport = self._ssh_client.get_transport()
             return transport.open_channel(
                 "direct-tcpip",
                 (remote_address, remote_port),
