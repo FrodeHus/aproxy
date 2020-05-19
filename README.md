@@ -1,6 +1,8 @@
 # aproxy
 Simple utility that lets you define multiple proxies in a config file.
 
+![Upload Python Package](https://github.com/FrodeHus/aproxy/workflows/Upload%20Python%20Package/badge.svg)
+
 To install: `pip3 install aproxy`
 
 # Usage
