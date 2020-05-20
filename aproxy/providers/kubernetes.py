@@ -10,6 +10,7 @@ import websocket
 import six
 import threading
 import traceback
+from OpenSSL import SSL
 
 CHANNEL_STDIN = 0
 CHANNEL_STDOUT = 1
@@ -26,7 +27,7 @@ class KubernetesProvider(Provider):
 
     @property
     def exclude_namespaces(self):
-        return self.__exclude_namespaces
+        return self._exclude_namespaces
 
     @exclude_namespaces.setter
     def exclude_namespaces(self, namespaces: []):
@@ -41,7 +42,7 @@ class KubernetesProvider(Provider):
         self._client = client.CoreV1Api()
         print(f"[*] active host is {configuration.Configuration().host}")
         if self._staging_pod_name:
-            print(f"[*] using configured staging pod: {self.__staging_pod_name}")
+            print(f"[*] using configured staging pod: {self._staging_pod_name}")
             pod_values = self._staging_pod_name.split(sep="/")
             pod = self._client.read_namespaced_pod(pod_values[1], pod_values[0])
             pod_info = kube_util.run_checks(self._client, pod)
@@ -94,7 +95,7 @@ class KubernetesProvider(Provider):
         remote: websocket.WebSocket = fwd.sock  # let the kubernetes-client do the heavy lifting, then grab the websocket - the stream component is weird with portforwarding
 
         while True:
-            r, _, _ = select.select([client_socket, remote], [], [])
+            r, _, _ = ssl_select([client_socket, remote], 10)
             if client_socket in r:
                 data = client_socket.recv(1024)
                 if len(data) == 0:
@@ -142,6 +143,12 @@ class KubernetesProvider(Provider):
 
         if fwd.is_open():
             fwd.close()
+
+
+def ssl_select(rlist, timeout):
+    return [
+        conn for conn in rlist if isinstance(conn, SSL.Connection) and conn.pending()
+    ] or select.select(rlist, (), (), timeout)
 
 
 def load_config(config: dict) -> KubernetesProvider:

@@ -29,7 +29,7 @@ class SshProvider(Provider):
 
         self.initializing = True
 
-        print(f"[*] connecting to ssh {self.__user}:{self.__host}...")
+        print(f"[*] connecting to ssh {self._user}:{self._host}...")
         client = paramiko.SSHClient()
         client.load_system_host_keys()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())

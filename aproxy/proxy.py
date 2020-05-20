@@ -113,7 +113,7 @@ class Proxy:
         self._config = config
         self._stop = False
         if remote_host:
-            self.__remote = remote_host
+            self._remote = remote_host
         else:
             self._remote_connect()
 
@@ -130,47 +130,47 @@ class Proxy:
             self._local.close()
             self._local = None
 
-        if self.__remote:
-            self.__remote.close()
-            self.__remote = None
+        if self._remote:
+            self._remote.close()
+            self._remote = None
 
         print(Fore.MAGENTA + "Disconnected " + self.name + Fore.RESET)
 
     def _remote_connect(self):
         global config
-        if self.__config.provider:
+        if self._config.provider:
             provider_config = config.providers[self._config.provider]
             provider = provider_config.provider
             if not provider.is_connected:
                 print("[*] connection was deferred - connecting to provider now...")
                 provider.connect()
 
-            self.__remote = provider.client_connect(
+            self._remote = provider.client_connect(
                 self._config.remote_host, self._config.remote_port, self._local
             )
         else:
             remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             remote_socket.connect((self._config.remote_host, self._config.remote_port))
-            self.__remote = remote_socket
+            self._remote = remote_socket
 
     def _proxy_loop(self):
         poller = poll()
         poller.register(self._local, select.POLLIN)
-        poller.register(self.__remote, select.POLLIN)
+        poller.register(self._remote, select.POLLIN)
         try:
             while True:
-                if self.__stop or not self.__remote or not self.__local:
+                if self._stop or not self._remote or not self._local:
                     break
-                r, w, x = select.select([self._local, self.__remote], [], [], 5.0)
+                r, w, x = select.select([self._local, self._remote], [], [], 5.0)
                 # channels = poller.poll(5.0)
-                if self.__local in r:
+                if self._local in r:
                     data = self._local.recv(1024)
                     if len(data) == 0:
                         break
                     print_info(data, Direction.REMOTE, self._config)
-                    self.__remote.send(data)
-                if self.__remote in r:
-                    data = self.__remote.recv(1024)
+                    self._remote.send(data)
+                if self._remote in r:
+                    data = self._remote.recv(1024)
                     if len(data) == 0:
                         break
                     print_info(data, Direction.LOCAL, self._config)

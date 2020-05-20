@@ -13,7 +13,7 @@
                 "proxy",
                 "start",
                 "--configFile",
-                "/home/frode/citadel-tunnel.json",
+                "/home/frode/citadel.json",
             ]
         }
     ]
